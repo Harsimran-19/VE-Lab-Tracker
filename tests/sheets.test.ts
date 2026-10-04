@@ -78,3 +78,12 @@ test("Google permission errors return actionable messages without upstream crede
   globalThis.fetch=async()=>response({error:"upstream-private-details"},403);
   await assert.rejects(readSheet(),(e:unknown)=>e instanceof AppError&&e.status===503&&e.message.includes("share the Sheet")&&!e.message.includes("upstream-private-details"));
 });
+test("a new member is appended to People with a stable ID, normalized email, and role",async()=>{
+  const person={id:"new-person-id",name:"New Member",email:"new@example.com",affiliation:"Lab",role:"member" as const};
+  let requestUrl="";let values:string[][]=[];
+  globalThis.fetch=async(input,init)=>{requestUrl=String(input);values=JSON.parse(String(init?.body)).values;return response({});};
+  await appendSheet("People",person);
+  assert.ok(decodeURIComponent(requestUrl).includes("'People'"));
+  assert.ok(requestUrl.includes("valueInputOption=RAW"));
+  assert.deepEqual(values,[TABLES.People.map(key=>person[key])]);
+});

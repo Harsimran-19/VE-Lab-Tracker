@@ -31,6 +31,10 @@ export async function savePerson(person: Person) {
   if (isDemo()) { demoStore().people = demoStore().people.map(p => p.id === person.id ? person : p); return; }
   return replaceSheet("People", person);
 }
+export async function addPerson(person: Person) {
+  if (isDemo()) { demoStore().people.push(person); return; }
+  return appendSheet("People", person);
+}
 export async function saveAssignment(assignment: Assignment, exists: boolean) {
   if (isDemo()) {
     if (exists) demoStore().assignments = demoStore().assignments.map(a => a.id === assignment.id ? assignment : a);

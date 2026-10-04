@@ -11,7 +11,7 @@ import type { Identity, Store } from "./types";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  providers: [GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID ?? "", clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "" })],
+  providers: [GoogleProvider({ clientId: process.env.GOOGLE_CLIENT_ID ?? "", clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "", authorization: { params: { prompt: "select_account" } } })],
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/", error: "/" },
   callbacks: {

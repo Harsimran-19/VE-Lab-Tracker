@@ -163,8 +163,11 @@ You should now have all nine variables:
 1. **Vercel:** save the variables, then **redeploy** your project.
 2. Open your app URL from Step 1 and sign in as `harsimran1869@gmail.com`.
 3. Click **Initialize lab spreadsheet** once. It fills the new Sheet with the workbook's projects and responsibilities; real reports start empty.
-4. In **People**, add each member's exact Google email. While Google login is in Testing, also add those accounts to Google's **Test users**, as in Step 5.
-5. Test a member report and confirm its new row appears in the Sheet's **Updates** tab.
+4. Click **Add member** to create a new person or test account. For someone already imported from the workbook, choose **Members → Edit** and enter their exact Google email. Choose **Member** for reporting or **Administrator** for managing the lab.
+5. **Copy → paste now:** copy that member’s exact Google email into **Google Auth Platform → Audience → Test users → Add users**, as in Step 5, while your Google login app is in Testing.
+6. Choose **Assign work**, select that member and their project, enter a responsibility, and save.
+7. Choose **Preview member view**, select that member, and open the preview. You should see their assigned responsibility and update form. This preview is read-only; click **Return to admin** to leave.
+8. Open a private browser window, sign in to your app with the member’s Google account, choose **Write an update**, and submit. Confirm the new row appears in the Sheet’s **Updates** tab.
 
 For cloud settings, review/save the changes and publish the environment configuration; I can then restart and check the connection here. Actual Google browser login still needs a reachable app URL with the matching redirect URI.
 
@@ -195,7 +198,7 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | Error | Check this step |
 | --- | --- |
 | `redirect_uri_mismatch` | Step 5: Google redirect URI must use Step 1's exact URL plus `/api/auth/callback/google` |
-| Google refuses your account | Step 5: add it as a Test user; Step 7: add members' emails in People |
+| Google refuses your account | Step 5: add it as a Test user; Step 7: add members through Add member or Members → Edit |
 | App cannot edit the Sheet | Step 3: enable Sheets API; Step 4: share the Sheet with `client_email` as Editor |
 | Spreadsheet not found | Step 2: copy only the ID; Step 4: check sharing |
 | Invalid private key | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines |

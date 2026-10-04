@@ -14,7 +14,13 @@ export const projectSchema = z.object({
   due: z.union([z.literal(""), z.iso.date()]), notes: text(4000)
 }).strict();
 export const personSchema = z.object({
-  id: text(100).min(1), name: text(150).min(1), email: z.union([z.literal(""), z.email()]).transform(e => e.toLowerCase()), affiliation: text(300)
+  id: text(100).min(1), name: text(150).min(1), email: z.union([z.literal(""), z.string().trim().pipe(z.email())]).transform(e => e.toLowerCase()), affiliation: text(300),
+  role: z.enum(["admin", "member"]).optional()
+}).strict();
+export const newPersonSchema = z.object({
+  name: text(150).min(1, "Enter the member’s name."),
+  email: z.string().trim().pipe(z.email()).transform(e => e.toLowerCase()),
+  affiliation: text(300).default(""), role: z.enum(["admin", "member"]).default("member")
 }).strict();
 export const assignmentSchema = z.object({
   id: text(100), projectId: text(50).min(1), personId: text(100).min(1), responsibility: text(300).min(1),

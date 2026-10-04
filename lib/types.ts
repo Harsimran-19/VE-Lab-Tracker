@@ -13,4 +13,8 @@ export interface Collaborator { id: string; projectId: string; name: string; aff
 export interface Update { id: string; createdAt: string; projectId: string; assignmentId: string; personId: string; progress: string; blockers: string; nextPlan: string; status: string }
 export interface Store { projects: Project[]; people: Person[]; assignments: Assignment[]; collaborators: Collaborator[]; updates: Update[] }
 export interface Identity { email: string; name: string; role: "admin" | "member"; personId: string }
-export interface Workspace extends Store { identity: Identity; demo: boolean; needsSetup: boolean }
+export interface Workspace extends Store {
+  identity: Identity; demo: boolean; needsSetup: boolean;
+  protectedPersonIds?: string[];
+  preview?: { adminName: string };
+}

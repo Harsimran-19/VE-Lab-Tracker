@@ -22,11 +22,20 @@ For the real app, follow [Google and Vercel setup](docs/GOOGLE_SETUP.md). Google
 - Project dashboard, research-stage and person filters, project details, editable milestones and publication status.
 - Responsibility assignment and editing, including multiple responsibilities within a shared project.
 - Member progress reports, blockers, next plans, previous-plan context, and automatic author/timestamp recording.
-- Member and collaborator directories; administrators can connect member Google emails.
+- Member creation, editable roles, Google email admission, and collaborator directories.
+- Admin-only, read-only member previews that work in production without changing the signed-in account.
+- A member home page showing assigned responsibilities and direct update buttons.
 - One-click initialization of a **new blank Sheet**, preserving the source workbook.
 - Responsive screens, keyboard-accessible dialogs, empty states, and connection errors.
 
-Member email addresses are intentionally blank until confirmed by an administrator. Add them in **People → Edit**. Fanny's role starts as member until her confirmed Google email is added to `ADMIN_EMAILS`; the test administrator remains authorized through that environment variable.
+## Admin and member workflow
+
+1. **Add member:** enter their name and exact Google sign-in email, and choose Member or Administrator. Existing workbook members can be connected through **Members → Edit**. New people are saved to the `People` tab automatically.
+2. **Assign work:** select the member, project, and responsibility. An unassigned member can sign in but has no project work or report form yet.
+3. **Preview member view:** select any member to inspect their assigned work and report form. This works on Vercel. It is read-only and keeps your actual administrator session intact; **Return to admin** restores the dashboard.
+4. **Test real reporting:** while Google OAuth is in Testing, add the member email in Google Auth Platform → Audience → Test users as well. Open a private browser window and sign in with that member's Google account. Their home page has a **Write an update** button for each responsibility. Submit and check the `Updates` Sheet tab.
+
+Members report on their own assigned work. Administrators create people, choose roles, manage project details and assignments, and review all reports. The account listed in `ADMIN_EMAILS` and your own active admin account cannot be demoted or have their email changed through the app. Fanny starts as a member until an administrator confirms her email and changes her role.
 
 ## Storage
 
@@ -52,4 +61,4 @@ Browser tests start an isolated local sample server on port 3100; a second produ
 
 Import this repository into Vercel, choose Next.js, and configure the variables in `.env.example`. Set `NEXTAUTH_URL` to your stable deployment URL and add the matching Google callback URI. Use your stable deployment or a separately configured Google OAuth client for previews; arbitrary Vercel preview URLs are not automatically permitted by Google. Redeploy after changing variables. Detailed steps are in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
 
-Automated reminders, reporting schedules, and new-project creation are not included in this first version. New people/projects can be added as properly formed rows in the corresponding Sheet tabs; keep IDs unique and stable. Members are admitted only when their exact verified Google email is present, or their email is listed in `ADMIN_EMAILS`.
+Automated reminders, reporting schedules, and new-project creation are not included in this first version. New people can be added through the app. New projects can be added as properly formed rows in the `Projects` Sheet tab; keep IDs unique and stable. Members are admitted only when their exact verified Google email is present, or their email is listed in `ADMIN_EMAILS`.
