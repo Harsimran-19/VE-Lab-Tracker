@@ -33,7 +33,7 @@ test("member data includes only their assigned projects and their own reports", 
   assert.deepEqual(scoped.assignments.map(a => a.id), ["A016"]);
   assert.deepEqual(scoped.updates.map(u => u.id), ["1"]);
   assert.ok(scoped.collaborators.every(c => c.projectId === "P10"));
-  assert.equal(scoped.people.length, store.people.length);
+  assert.deepEqual(scoped.people.map(p=>p.id),["hars"]);
 });
 test("members cannot edit admin data or report another person's responsibility", () => {
   const data=fixture();const identity=resolveIdentity("member@example.com","",data,[]);

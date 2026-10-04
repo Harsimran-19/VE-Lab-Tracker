@@ -1,167 +1,123 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+const pageErrors=new WeakMap<Page,string[]>();
+test.beforeEach(async({page})=>{const errors:string[]=[];pageErrors.set(page,errors);page.on("pageerror",e=>errors.push(e.message));});
+test.afterEach(async({page})=>{expect(pageErrors.get(page)).toEqual([]);});
+const headers={Origin:"http://localhost:3100"};
 
-test("admin can filter projects, edit a milestone, and manage responsibilities", async({page})=>{
+test("admin has one overview of people and entries without a setup checklist",async({page})=>{
   await page.goto("/");
-  await expect(page.getByRole("heading",{name:"Admin dashboard"})).toBeVisible();
-  await page.getByRole("button",{name:"Projects 15",exact:true}).click();
-  await page.getByRole("textbox",{name:"Search projects"}).fill("P10");
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await page.getByRole("button",{name:"View Quantitative Entrepreneurial Ecosystems",exact:true}).click();
-  await expect(page.getByRole("dialog")).toContainText("LLM");
-  await page.getByRole("button",{name:"Assign",exact:true}).click();
-  await page.getByLabel("Lab member").selectOption("harsimran");
-  await page.getByLabel("Responsibility",{exact:true}).fill("Admin acceptance review");
-  await page.getByRole("button",{name:"Save responsibility"}).click();
-  await expect(page.getByRole("dialog",{name:"Assign a responsibility",exact:true})).toHaveCount(0);
-  await expect(page.getByRole("dialog",{name:"P10 · Project details",exact:true})).toContainText("Admin acceptance review");
-  await page.getByRole("button",{name:"Edit",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Lab overview",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"People and their work"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"All entries"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Copy invite link"})).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read","clipboard-write"]);
+  await page.getByRole("button",{name:"Copy invite link"}).click();
+  await expect(page.getByRole("status")).toContainText("Link copied");
+  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe("http://localhost:3100");
+  await expect(page.getByRole("button",{name:"Add member",exact:true})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"2. Assign work",exact:true})).toHaveCount(0);
+  await page.getByLabel("Filter by person").selectOption("hars");
+  await expect(page.locator(".entries-grid .update-card")).toHaveCount(1);
+  await page.getByLabel("Filter by status").selectOption("Blocked");
+  await expect(page.locator(".entries-grid")).toContainText("need access");
+  await page.locator(".project-directory summary").click();
+  await page.locator(".project-directory-list").getByRole("button",{name:"Quantitative Entrepreneurial Ecosystems",exact:false}).click();
+  await page.getByRole("button",{name:"Edit project",exact:true}).click();
   await page.getByLabel("Next milestone").fill("Review the pilot dataset");
   await page.getByRole("button",{name:"Save project"}).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.reload();
-  await page.getByRole("button",{name:"Projects 15",exact:true}).click();
-  await page.getByRole("textbox",{name:"Search projects"}).fill("P10");
-  await expect(page.locator("tbody")).toContainText("Review the pilot dataset");
-  await page.getByRole("textbox",{name:"Search projects"}).fill("");
-  await page.getByLabel("Filter by person").selectOption("lin");
-  await expect(page.locator("tbody tr")).toHaveCount(2);
-  await page.getByRole("button",{name:"Report my work",exact:true}).click();
-  await expect(page.getByLabel("Your responsibility")).toContainText("Admin acceptance review");
+  const workspace=await (await page.request.get("/api/workspace")).json();
+  expect(workspace.projects.find((p:{id:string})=>p.id==="P10").milestone).toBe("Review the pilot dataset");
 });
 
-test("a member submits and reloads a report while unauthorized mutations are refused",async({page})=>{
+test("existing members save and reload their own entries; admin mutations remain protected",async({page})=>{
   await page.goto("/");await page.getByRole("button",{name:"Member view",exact:true}).click();
-  await expect(page.getByRole("button",{name:"My projects 1",exact:true})).toBeVisible();
-  const workspace=await page.request.get("/api/workspace");const data=await workspace.json();
-  expect(data.identity.personId).toBe("hars");expect(data.projects.map((p:{id:string})=>p.id)).toEqual(["P10"]);
-  expect(data.updates.every((u:{personId:string})=>u.personId==="hars")).toBeTruthy();
-  await page.getByRole("button",{name:"Share progress",exact:true}).click();
-  await expect(page.getByText("Last time, you planned to…")).toBeVisible();
-  await page.getByLabel("What actually moved forward?").fill("Browser test: completed the pilot comparison.");
-  await page.getByRole("radio",{name:"Blocked",exact:true}).check();
-  await page.getByLabel("Anything blocking you, or help you need?").fill("Browser test: please review the output.");
-  await page.getByLabel("What’s next?").fill("Expand the evaluation set.");
-  await page.getByRole("button",{name:"Submit update",exact:true}).click();
-  await expect(page.getByRole("status")).toContainText("Update saved");
-  await page.getByRole("button",{name:"Updates",exact:true}).click();
-  await expect(page.getByText("Browser test: completed the pilot comparison.", {exact:true})).toBeVisible();
-  await page.reload();await page.getByRole("button",{name:"Updates",exact:true}).click();
-  await expect(page.getByText("Browser test: completed the pilot comparison.", {exact:true})).toBeVisible();
-  const headers={Origin:"http://localhost:3100"};
-  const forbidden=await page.request.patch("/api/projects",{headers,data:data.projects[0]});expect(forbidden.status()).toBe(403);
-  const wrongAssignment=await page.request.post("/api/updates",{headers,data:{assignmentId:"A001",progress:"Spoofed",blockers:"",nextPlan:"",status:"On track"}});expect(wrongAssignment.status()).toBe(403);
-  const foreign=await page.request.post("/api/updates",{headers:{Origin:"https://evil.example"},data:{}});expect(foreign.status()).toBe(403);
-  const fakeAuthor=await page.request.post("/api/updates",{headers,data:{assignmentId:"A016",personId:"fanny",progress:"Spoofed",status:"On track"}});expect(fakeAuthor.status()).toBe(400);
-});
-
-test("admin can connect a member's Google email",async({page})=>{
-  await page.goto("/");await page.getByRole("button",{name:"Members",exact:true}).click();
-  await page.getByRole("button",{name:"Edit Lin",exact:true}).click();
-  await page.getByLabel("Google account email").fill("lin-test@example.com");
-  await page.getByRole("button",{name:"Save member"}).click();
-  await expect(page.getByRole("link",{name:"lin-test@example.com"})).toBeVisible();
-  const duplicate=await page.request.patch("/api/people",{headers:{Origin:"http://localhost:3100"},data:{id:"jin",name:"Jin",email:"lin-test@example.com",affiliation:""}});expect(duplicate.status()).toBe(409);
-});
-
-test("mobile navigation and reporting fit the screen",async({page})=>{
-  await page.setViewportSize({width:390,height:844});await page.goto("/");
-  await page.getByRole("button",{name:"Member view",exact:true}).click();
-  await page.getByRole("button",{name:"Open navigation"}).click();
-  await page.getByRole("button",{name:"My projects 1",exact:true}).click();
-  await page.getByRole("button",{name:"View Quantitative Entrepreneurial Ecosystems",exact:true}).click();
-  await expect(page.getByRole("dialog")).toBeVisible();await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button",{name:"Share progress",exact:true}).click();
-  const width=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,window:window.innerWidth}));expect(width.scroll).toBeLessThanOrEqual(width.window);
-});
-
-test("production ignores demo mode and denies unauthenticated access",async({request})=>{
-  const html=await request.get("http://localhost:3101/");expect(await html.text()).toContain("Google setup is still needed");
-  const demo=await request.post("http://localhost:3101/api/demo",{headers:{Origin:"http://localhost:3101"},form:{view:"admin"}});expect(demo.status()).toBe(404);
-  const workspace=await request.get("http://localhost:3101/api/workspace");expect(workspace.status()).toBe(401);
-  expect((await request.get("http://localhost:3101/api/member-preview?personId=hars")).status()).toBe(401);
-  expect((await request.post("http://localhost:3101/api/people",{headers:{Origin:"http://localhost:3101"},data:{name:"Test",email:"test@example.com"}})).status()).toBe(401);
-  const update=await request.post("http://localhost:3101/api/updates",{headers:{Origin:"http://localhost:3101"},data:{assignmentId:"A016",progress:"Unauthorized",status:"On track"}});expect(update.status()).toBe(401);
-});
-
-test("admin adds a test member, assigns work, and previews without impersonating them",async({page})=>{
-  await page.goto("/");
-  await expect(page.getByRole("region",{name:"Admin responsibilities"})).toContainText("1. Add members");
-  await page.getByRole("button",{name:"Add member",exact:true}).click();
-  const add=page.getByRole("dialog",{name:"Add a lab member"});
-  await expect(add).toContainText("Audience → Test users");
-  await add.getByLabel("Name",{exact:true}).fill("Preview Test Member");
-  await add.getByLabel("Google account email").fill("PREVIEW-TEST@example.com");
-  await add.getByRole("button",{name:"Add member",exact:true}).click();
-  await expect(add).toHaveCount(0);
-  const card=page.locator(".person-card").filter({has:page.getByRole("heading",{name:"Preview Test Member",exact:true})});
-  await expect(card).toContainText("preview-test@example.com");
-  const adminBefore=await (await page.request.get("/api/workspace")).json();
-  const member=adminBefore.people.find((p:{name:string})=>p.name==="Preview Test Member");
-  await card.getByRole("button",{name:"Preview Preview Test Member",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"No work assigned yet"})).toBeVisible();
-  await page.getByRole("button",{name:"Refresh workspace"}).click();
-  await expect(page.getByRole("region",{name:"Member preview"})).toContainText("Preview Test Member");
-  await page.getByRole("button",{name:"Return to admin"}).click();
-  await page.getByRole("button",{name:"Members",exact:true}).click();
-  await card.getByRole("button",{name:"Assign work to Preview Test Member"}).click();
-  const assignment=page.getByRole("dialog",{name:"Assign a responsibility"});
-  await assignment.getByLabel("Project",{exact:true}).selectOption("P10");
-  await expect(assignment.getByLabel("Lab member")).toHaveValue(member.id);
-  await assignment.getByLabel("Responsibility",{exact:true}).fill("Evaluate the pilot dataset");
-  await assignment.getByRole("button",{name:"Save responsibility"}).click();
-  await expect(assignment).toHaveCount(0);
-  await card.getByRole("button",{name:"Preview Preview Test Member",exact:true}).click();
-  await expect(page.getByRole("heading",{name:"My assigned work",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Write update for Evaluate the pilot dataset"}).click();
-  await expect(page.getByLabel("Your responsibility")).toContainText("Evaluate the pilot dataset");
-  await page.getByLabel("What actually moved forward?").fill("This is a preview only.");
-  await expect(page.getByRole("button",{name:"Submission disabled in preview"})).toBeDisabled();
-  const preview=await (await page.request.get(`/api/member-preview?personId=${member.id}`)).json();
-  expect(preview.identity.personId).toBe(member.id);expect(preview.identity.role).toBe("member");
-  expect(preview.projects.map((p:{id:string})=>p.id)).toEqual(["P10"]);
-  expect(preview.assignments.every((a:{personId:string})=>a.personId===member.id)).toBeTruthy();
-  const actual=await (await page.request.get("/api/workspace")).json();
-  expect(actual.identity.role).toBe("admin");expect(actual.updates.length).toBe(adminBefore.updates.length);
-  const assigned=preview.assignments[0];
-  const spoof=await page.request.post("/api/updates",{headers:{Origin:"http://localhost:3100"},data:{assignmentId:assigned.id,progress:"Preview spoof",status:"On track"}});
-  expect(spoof.status()).toBe(403);
-  await page.getByRole("button",{name:"Return to admin"}).click();
-  await expect(page.getByRole("heading",{name:"Admin dashboard",exact:true})).toBeVisible();
-  await expect(page.getByRole("button",{name:"Projects 15",exact:true})).toBeVisible();
-  const duplicate=await page.request.post("/api/people",{headers:{Origin:"http://localhost:3100"},data:{name:"Duplicate",email:"preview-test@example.com",role:"member"}});
-  expect(duplicate.status()).toBe(409);
-});
-
-test("admin manages roles while members cannot add people or open admin previews",async({page})=>{
-  await page.goto("/");await page.getByRole("button",{name:"Members",exact:true}).click();
-  await page.getByRole("button",{name:"Edit Lin",exact:true}).click();
-  await page.getByLabel("Role",{exact:true}).selectOption("admin");
-  await page.getByRole("button",{name:"Save member",exact:true}).click();
-  const lin=page.locator(".person-card").filter({has:page.getByRole("heading",{name:"Lin",exact:true})});
-  await expect(lin).toContainText("Administrator");await expect(lin.getByRole("button",{name:"Preview Lin",exact:true})).toHaveCount(0);
-  await page.getByRole("button",{name:"Edit Harsimran",exact:true}).click();
-  await expect(page.getByLabel("Role",{exact:true})).toBeDisabled();
-  await expect(page.getByLabel("Google account email")).toBeDisabled();
-  await page.getByRole("button",{name:"Cancel",exact:true}).click();
-  const protectedEdit=await page.request.patch("/api/people",{headers:{Origin:"http://localhost:3100"},data:{id:"harsimran",name:"Harsimran",email:"harsimran1869@gmail.com",affiliation:"",role:"member"}});
-  expect(protectedEdit.status()).toBe(400);
-  await page.getByRole("button",{name:"Member view",exact:true}).click();
-  const headers={Origin:"http://localhost:3100"};
-  expect((await page.request.post("/api/people",{headers,data:{name:"Unauthorized",email:"unauthorized@example.com"}})).status()).toBe(403);
-  expect((await page.request.patch("/api/people",{headers,data:{id:"hars",name:"Hars",email:"hars@example.com",affiliation:"",role:"admin"}})).status()).toBe(403);
+  await expect(page.getByRole("heading",{name:"My work",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Add entry",exact:true}).click();
+  const dialog=page.getByRole("dialog",{name:"Add entry",exact:true});
+  await expect(dialog.getByLabel("Project",{exact:true})).toHaveValue("P10");
+  await expect(dialog).toContainText("Previously, you planned to…");
+  await dialog.getByLabel("Progress made").fill("Browser test: completed the pilot comparison.");
+  await dialog.getByRole("radio",{name:"Blocked",exact:true}).check();
+  await dialog.getByLabel("Blockers or help needed").fill("Please review the output.");
+  await dialog.getByLabel("Next step").fill("Expand the evaluation set.");
+  await dialog.getByRole("button",{name:"Save entry",exact:true}).click();
+  await expect(dialog).toHaveCount(0);await expect(page.getByRole("status")).toContainText("Entry saved");
+  await expect(page.getByText("Browser test: completed the pilot comparison.",{exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByText("Browser test: completed the pilot comparison.",{exact:true})).toBeVisible();
+  const workspace=await (await page.request.get("/api/workspace")).json();
+  expect(workspace.identity.personId).toBe("hars");expect(workspace.updates.every((u:{personId:string})=>u.personId==="hars")).toBeTruthy();
+  expect((await page.request.patch("/api/projects",{headers,data:workspace.projects[0]})).status()).toBe(403);
+  expect((await page.request.post("/api/people",{headers,data:{name:"Fake",email:"fake@example.com",role:"admin"}})).status()).toBe(403);
   expect((await page.request.get("/api/member-preview?personId=hars")).status()).toBe(403);
+  expect((await page.request.post("/api/entries",{headers:{Origin:"https://other.example.com"},data:{}})).status()).toBe(403);
+  expect((await page.request.post("/api/entries",{headers,data:{entryId:crypto.randomUUID(),projectId:"P10",assignmentId:"A014",progress:"Impersonation",status:"On track"}})).status()).toBe(403);
 });
 
-test("mobile member preview and its return control fit the screen",async({page})=>{
+test("a new account joins and posts to an existing project without admin setup",async({page})=>{
+  await page.goto("/");await page.getByRole("button",{name:"New member view",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Welcome, New sample member."})).toBeVisible();
+  const before=await (await page.request.get("/api/workspace")).json();
+  expect(before.identity.role).toBe("member");expect(before.people.map((p:{id:string})=>p.id)).toEqual([before.identity.personId]);expect(before.assignments).toHaveLength(0);expect(before.availableProjects.length).toBeGreaterThanOrEqual(15);
+  await page.getByRole("button",{name:"Add your first entry"}).click();
+  const dialog=page.getByRole("dialog",{name:"Add entry",exact:true});
+  await dialog.getByLabel("Project",{exact:true}).selectOption("P01");
+  await dialog.getByLabel("Progress made").fill("New member: reviewed the templates.");
+  await dialog.getByRole("button",{name:"Save entry"}).click();await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("New member: reviewed the templates.",{exact:true})).toBeVisible();
+  const after=await (await page.request.get("/api/workspace")).json();
+  expect(after.identity.personId).toBe(before.identity.personId);expect(after.assignments).toHaveLength(1);expect(after.assignments[0].personId).toBe(before.identity.personId);
+  expect(after.projects.map((p:{id:string})=>p.id)).toEqual(["P01"]);expect(after.updates).toHaveLength(1);
+  await page.getByRole("button",{name:"Admin view",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Lab overview"})).toBeVisible();
+  await expect(page.getByText(before.identity.email,{exact:true})).toBeVisible();
+  await expect(page.getByText("New member: reviewed the templates.",{exact:true})).toBeVisible();
+});
+
+test("a new member creates their own project, then adds another entry without duplicating it",async({page})=>{
+  await page.goto("/");await page.getByRole("button",{name:"New member view",exact:true}).click();
+  await page.getByRole("button",{name:"Add your first entry"}).click();
+  let dialog=page.getByRole("dialog",{name:"Add entry",exact:true});
+  await dialog.getByLabel("Project",{exact:true}).selectOption("new");await dialog.getByLabel("Project name").fill("Self-service prototype");
+  await dialog.getByLabel("Progress made").fill("Created the first prototype.");await dialog.getByRole("button",{name:"Save entry"}).click();await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading",{name:"Self-service prototype",exact:true})).toBeVisible();
+  const first=await (await page.request.get("/api/workspace")).json();expect(first.projects).toHaveLength(1);expect(first.assignments).toHaveLength(1);
+  await page.getByRole("button",{name:"Add entry for Self-service prototype Project work",exact:true}).click();
+  dialog=page.getByRole("dialog",{name:"Add entry",exact:true});
+  await expect(dialog.getByLabel("Project",{exact:true})).toHaveValue(first.projects[0].id);
+  await dialog.getByLabel("Progress made").fill("Improved the prototype.");await dialog.getByRole("button",{name:"Save entry"}).click();await expect(dialog).toHaveCount(0);
+  const second=await (await page.request.get("/api/workspace")).json();expect(second.projects).toHaveLength(1);expect(second.assignments).toHaveLength(1);expect(second.updates).toHaveLength(2);
+  await page.reload();await expect(page.getByText("Improved the prototype.",{exact:true})).toBeVisible();
+});
+
+test("admin can correct roles and preview a member without changing their signed-in identity",async({page})=>{
+  await page.goto("/");await page.getByRole("button",{name:"Edit Lin",exact:true}).click();
+  await page.getByLabel("Google account email").fill("lin-test@example.com");await page.getByLabel("Role",{exact:true}).selectOption("admin");await page.getByRole("button",{name:"Save member"}).click();
+  await expect(page.getByRole("button",{name:"Preview Lin",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Edit Harsimran",exact:true}).click();await expect(page.getByLabel("Role",{exact:true})).toBeDisabled();await page.getByRole("button",{name:"Cancel",exact:true}).click();
+  expect((await page.request.patch("/api/people",{headers,data:{id:"harsimran",name:"Harsimran",email:"harsimran1869@gmail.com",affiliation:"",role:"member"}})).status()).toBe(400);
+  await page.getByRole("button",{name:"Preview Hars",exact:true}).click();await expect(page.getByRole("region",{name:"Member preview"})).toBeVisible();
+  await page.getByRole("button",{name:"Add entry",exact:true}).click();await expect(page.getByRole("button",{name:"Saving disabled in preview"})).toBeDisabled();
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();await page.getByRole("button",{name:"Refresh workspace"}).click();
+  await expect(page.getByRole("region",{name:"Member preview"})).toBeVisible();
+  expect((await (await page.request.get("/api/workspace")).json()).identity.role).toBe("admin");
+  await page.getByRole("button",{name:"Return to admin"}).click();await expect(page.getByRole("heading",{name:"Lab overview",exact:true})).toBeVisible();
+});
+
+test("self-service entry creation fits a mobile screen",async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto("/");
-  await page.getByRole("button",{name:"Preview member view",exact:true}).click();
-  await page.getByLabel("Choose a member").selectOption("hars");
-  await page.getByRole("button",{name:"Open member preview"}).click();
-  await expect(page.getByRole("button",{name:"Return to admin"})).toBeVisible();
-  await page.getByRole("button",{name:"Write update for LLM"}).click();
-  await expect(page.getByRole("button",{name:"Submission disabled in preview"})).toBeDisabled();
-  const width=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,window:window.innerWidth}));expect(width.scroll).toBeLessThanOrEqual(width.window);
-  await page.getByRole("button",{name:"Return to admin"}).click();
-  await expect(page.getByRole("heading",{name:"Admin dashboard",exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.getByRole("button",{name:"New member view",exact:true}).click();await page.getByRole("button",{name:"Add your first entry"}).click();
+  await page.getByLabel("Project",{exact:true}).selectOption("new");await page.getByLabel("Project name").fill("Mobile project");await page.getByLabel("Progress made").fill("Added from a mobile screen.");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.getByRole("button",{name:"Save entry"}).click();await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("Added from a mobile screen.",{exact:true})).toBeVisible();
+});
+
+test("production ignores sample authentication and rejects anonymous entry creation",async({request})=>{
+  const html=await request.get("http://localhost:3101/");expect(await html.text()).toContain("Google setup is still needed");
+  for(const view of ["admin","member","new","person:anyone"])expect((await request.post("http://localhost:3101/api/demo",{headers:{Origin:"http://localhost:3101"},form:{view}})).status()).toBe(404);
+  expect((await request.get("http://localhost:3101/api/workspace")).status()).toBe(401);
+  expect((await request.get("http://localhost:3101/api/member-preview?personId=hars")).status()).toBe(401);
+  expect((await request.post("http://localhost:3101/api/entries",{headers:{Origin:"http://localhost:3101"},data:{entryId:crypto.randomUUID(),newProjectName:"Anonymous",progress:"Unauthorized",status:"On track"}})).status()).toBe(401);
 });

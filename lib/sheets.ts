@@ -56,6 +56,15 @@ export async function readSheet(): Promise<Store> {
     assignments: toObjects<Assignment>(ranges[2], TABLES.Assignments), collaborators: toObjects<Collaborator>(ranges[3], TABLES.Collaborators),
     updates: toObjects<Update>(ranges[4], TABLES.Updates)
   };
+  // Identical first-login appends can race across Vercel instances. Keep one
+  // logical person for a stable Google ID; never merge different identities.
+  store.people = store.people.filter((person,index,people)=>{
+    const first=people.findIndex(p=>p.id===person.id);
+    if(first===index)return true;
+    const original=people[first];
+    if(original.email.trim().toLowerCase()!==person.email.trim().toLowerCase() || original.role!==person.role) throw new AppError("Conflicting person records in the People tab. Correct the duplicate before continuing.",409);
+    return false;
+  });
   if (store.people.some(p => !["admin", "member"].includes(p.role))) throw new AppError("People.role must be admin or member.", 409);
   const emails = store.people.map(p => p.email.toLowerCase().trim()).filter(Boolean);
   if (new Set(emails).size !== emails.length) throw new AppError("Two people have the same email in the People tab. Correct the duplicate before continuing.", 409);

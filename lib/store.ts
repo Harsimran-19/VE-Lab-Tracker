@@ -23,6 +23,10 @@ export async function addUpdate(update: Update) {
   if (isDemo()) { demoStore().updates.push(update); return; }
   return appendSheet("Updates", update);
 }
+export async function addProject(project: Project) {
+  if (isDemo()) { demoStore().projects.push(project); return; }
+  return appendSheet("Projects", project);
+}
 export async function saveProject(project: Project) {
   if (isDemo()) { demoStore().projects = demoStore().projects.map(p => p.id === project.id ? project : p); return; }
   return replaceSheet("Projects", project);

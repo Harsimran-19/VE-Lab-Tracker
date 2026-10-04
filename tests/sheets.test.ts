@@ -87,3 +87,11 @@ test("a new member is appended to People with a stable ID, normalized email, and
   assert.ok(requestUrl.includes("valueInputOption=RAW"));
   assert.deepEqual(values,[TABLES.People.map(key=>person[key])]);
 });
+test("simultaneous Google signup rows converge without merging different accounts",async()=>{
+  const ranges=valueRanges();const person=["google-stable-id","New member","new@example.com","","member"];
+  ranges.valueRanges[1].values.push(person,[...person]);
+  globalThis.fetch=async(input)=>response(String(input).includes("values:batchGet")?ranges:metadata());
+  const store=await readSheet();assert.equal(store.people.filter(p=>p.email==="new@example.com").length,1);
+  ranges.valueRanges[1].values.push(["different-id","Different person","new@example.com","","member"]);
+  await assert.rejects(readSheet(),(e:unknown)=>e instanceof AppError&&e.status===409);
+});

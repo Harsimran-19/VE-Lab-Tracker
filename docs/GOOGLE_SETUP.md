@@ -94,9 +94,9 @@ If Google disables key creation or service-account sharing, your Google administ
 
 1. In the same Cloud project, open **Google Auth Platform**. It may also appear as **APIs & Services → OAuth consent screen**.
 2. Complete **Get started / Branding**: app name **VE Lab Tracker**, plus your support and contact email.
-3. Choose **External** audience. Leave publishing status as **Testing**.
+3. Choose **External** audience. Start in **Testing** while configuring login.
 4. Under **Audience → Test users**, add `harsimran1869@gmail.com`.
-5. Use basic login scopes only: `openid`, `email`, `profile`.
+5. Use basic login scopes only: `openid`, `email`, `profile`. Before sharing with the whole lab, choose **Audience → Publish app** and confirm **In production**. Then users can join without being individually added as Google Test users.
 6. Open **Clients → Create client → Web application**.
 
 **Copy from Step 1 → paste into Google's client form:**
@@ -163,11 +163,11 @@ You should now have all nine variables:
 1. **Vercel:** save the variables, then **redeploy** your project.
 2. Open your app URL from Step 1 and sign in as `harsimran1869@gmail.com`.
 3. Click **Initialize lab spreadsheet** once. It fills the new Sheet with the workbook's projects and responsibilities; real reports start empty.
-4. Click **Add member** to create a new person or test account. For someone already imported from the workbook, choose **Members → Edit** and enter their exact Google email. Choose **Member** for reporting or **Administrator** for managing the lab.
-5. **Copy → paste now:** copy that member’s exact Google email into **Google Auth Platform → Audience → Test users → Add users**, as in Step 5, while your Google login app is in Testing.
-6. Choose **Assign work**, select that member and their project, enter a responsibility, and save.
-7. Choose **Preview member view**, select that member, and open the preview. You should see their assigned responsibility and update form. This preview is read-only; click **Return to admin** to leave.
-8. Open a private browser window, sign in to your app with the member’s Google account, choose **Write an update**, and submit. Confirm the new row appears in the Sheet’s **Updates** tab.
+4. In Google Cloud, open **Google Auth Platform → Audience → Publish app** and confirm **In production** before inviting the lab. If Google blocks a test account before publication, add it under **Audience → Test users**.
+5. Click **Copy invite link** and share the website. Users sign in with Google; their member accounts are created automatically. You do not need to add people or assign their work.
+6. Open the website in a private browser window and sign in with a different Google account. Choose **Add entry**, select an existing project or **Create a new project**, describe progress, and choose **Save entry**.
+7. Confirm the entry appears in the Sheet’s **Updates** tab and on your admin **Lab overview**. New people appear in **People** automatically; new projects appear in **Projects**.
+8. For an imported workbook person whose email is blank, you can optionally use their edit button under **People and their work** to add their exact Google email before their first login. This preserves their original workbook identity. Other people can sign up without this step.
 
 For cloud settings, review/save the changes and publish the environment configuration; I can then restart and check the connection here. Actual Google browser login still needs a reachable app URL with the matching redirect URI.
 
@@ -198,7 +198,7 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | Error | Check this step |
 | --- | --- |
 | `redirect_uri_mismatch` | Step 5: Google redirect URI must use Step 1's exact URL plus `/api/auth/callback/google` |
-| Google refuses your account | Step 5: add it as a Test user; Step 7: add members through Add member or Members → Edit |
+| Google refuses your account | Step 5: publish the Google audience In production, or add the account as a Test user during initial testing |
 | App cannot edit the Sheet | Step 3: enable Sheets API; Step 4: share the Sheet with `client_email` as Editor |
 | Spreadsheet not found | Step 2: copy only the ID; Step 4: check sharing |
 | Invalid private key | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines |

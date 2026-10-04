@@ -15,6 +15,7 @@ export interface Store { projects: Project[]; people: Person[]; assignments: Ass
 export interface Identity { email: string; name: string; role: "admin" | "member"; personId: string }
 export interface Workspace extends Store {
   identity: Identity; demo: boolean; needsSetup: boolean;
+  availableProjects: Pick<Project,"id"|"name">[];
   protectedPersonIds?: string[];
   preview?: { adminName: string };
 }

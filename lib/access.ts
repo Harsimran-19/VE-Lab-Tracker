@@ -7,7 +7,7 @@ export function resolveIdentity(email: string, name: string, store: Store, admin
   const normalized = email.trim().toLowerCase();
   const person = store.people.find(p => p.email.trim().toLowerCase() === normalized && p.email.trim());
   if (admins.includes(normalized)) return { email: normalized, name: person?.name || name, role: "admin", personId: person?.id ?? "admin" };
-  if (!person) throw new AppError("Your Google account has not been added to the lab. Ask the administrator to add your email.", 403);
+  if (!person) throw new AppError("Your account could not be loaded. Sign out and sign in again to finish joining the lab.", 403);
   return { email: normalized, name: person.name, role: person.role, personId: person.id };
 }
 export function scopeStore(store: Store, identity: Identity): Store {
@@ -16,7 +16,7 @@ export function scopeStore(store: Store, identity: Identity): Store {
   const ids = new Set(assignments.map(a => a.projectId));
   return {
     projects: store.projects.filter(p => ids.has(p.id)), assignments,
-    people: store.people, collaborators: store.collaborators.filter(c => ids.has(c.projectId)),
+    people: store.people.filter(p=>p.id===identity.personId), collaborators: store.collaborators.filter(c => ids.has(c.projectId)),
     updates: store.updates.filter(u => u.personId === identity.personId && ids.has(u.projectId))
   };
 }
@@ -37,6 +37,7 @@ export function workspaceFor(store: Store, identity: Identity, demo: boolean, ad
   const scoped = scopeStore(store, identity);
   return {
     ...scoped, people: scoped.people.map(p => admins.includes(p.email.toLowerCase()) ? { ...p, role: "admin" as const } : p),
+    availableProjects: store.projects.map(({id,name})=>({id,name})),
     identity, demo, needsSetup: !store.projects.length && !store.people.length,
     ...(identity.role === "admin" ? { protectedPersonIds: store.people.filter(p => p.id === identity.personId || admins.includes(p.email.toLowerCase())).map(p => p.id) } : {})
   };

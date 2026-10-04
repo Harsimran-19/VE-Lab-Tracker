@@ -26,3 +26,11 @@ export const assignmentSchema = z.object({
   id: text(100), projectId: text(50).min(1), personId: text(100).min(1), responsibility: text(300).min(1),
   status: z.enum(["Not started", "In progress", "Blocked", "Done"]), due: z.union([z.literal(""), z.iso.date()])
 }).strict();
+
+export const entrySchema = z.object({
+  entryId: z.uuid(), projectId: text(50).default(""), newProjectName: text(150).default(""),
+  assignmentId: text(100).default(""), progress: text(4000).min(1,"Describe your progress."),
+  blockers: text(2000).default(""), nextPlan: text(2000).default(""), status: z.enum(STATUSES)
+}).strict().refine(value=>Boolean(value.projectId)!==Boolean(value.newProjectName),{
+  message:"Choose a project or enter a new project name.",path:["projectId"]
+});
