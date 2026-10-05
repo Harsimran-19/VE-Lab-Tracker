@@ -7,10 +7,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  Copy,
-  FlaskConical,
   FolderKanban,
-  LayoutDashboard,
   LogOut,
   Mail,
   Pencil,
@@ -30,6 +27,8 @@ import { HelpTip } from "./help-tip";
 import { TeamDirectory, MemberContact, memberProjects } from "./team-directory";
 import { ProjectContext } from "./project-details";
 import type { Screen } from "./workspace-page";
+import { WorkspaceChrome } from "./workspace-chrome";
+import { HomePage } from "./home-page";
 function Avatar({ name }: { name: string }) {
   return (
     <span className="avatar" aria-hidden="true">
@@ -159,14 +158,6 @@ export function LabApp({
     } finally {
       setBusy(false);
     }
-  }
-  async function copyLink() {
-    await action(async () => {
-      await navigator.clipboard.writeText(window.location.origin);
-      setNotice(
-        "Website link copied. Members sign in and choose their projects themselves.",
-      );
-    });
   }
   async function join(id: string) {
     await action(async () => {
@@ -331,86 +322,7 @@ export function LabApp({
               : chosen?.name;
   const deadlineText = `${shortDate(data.reportingDue.date)} at ${data.reportingDue.time} (${data.settings.timezone})`;
   return (
-    <div className="lab-shell">
-      <a className="skip-link" href="#workspace-main">
-        Skip to content
-      </a>
-      <header className="lab-header">
-        <Link className="brand" href="/">
-          <span className="brand-icon">
-            <FlaskConical size={22} />
-          </span>
-          <span>
-            VE <strong>Lab</strong>
-            <small>Venture Engineering Lab</small>
-          </span>
-        </Link>
-        <nav aria-label="Main navigation">
-          {[
-            {
-              path: "/",
-              label: manager ? "Lab overview" : "My work",
-              icon: LayoutDashboard,
-              active: screen === "dashboard",
-            },
-            {
-              path: "/projects",
-              label: "Projects",
-              icon: FolderKanban,
-              active: screen === "projects" || screen === "project",
-            },
-            {
-              path: "/team",
-              label: "Team",
-              icon: Users,
-              active: screen === "team" || screen === "member",
-            },
-            {
-              path: "/account",
-              label: manager ? "Account & settings" : "Account",
-              icon: UserRound,
-              active: screen === "account",
-            },
-          ].map((item) => (
-            <Link
-              prefetch={false}
-              key={item.path}
-              href={item.path}
-              className={item.active ? "active" : ""}
-              aria-current={item.active ? "page" : undefined}
-            >
-              <item.icon size={19} />
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-help">
-          <strong>
-            {manager ? "A useful weekly review" : "Your weekly routine"}
-          </strong>
-          <p>
-            {manager
-              ? "Check what moved forward, who needs help and what is due next."
-              : "Share your progress, next step and any help you need."}
-          </p>
-        </div>
-        <div className="lab-account">
-          <Avatar name={data.identity.name} />
-          <div>
-            <strong>{data.identity.name}</strong>
-            <small>{manager ? "Manager" : "Member"}</small>
-          </div>
-          {!data.demo && (
-            <button
-              className="icon-button"
-              aria-label="Sign out"
-              onClick={() => signOut({ callbackUrl: "/" })}
-            >
-              <LogOut size={18} />
-            </button>
-          )}
-        </div>
-      </header>
+    <WorkspaceChrome screen={screen}>
       <div className="workspace-content">
         {data.demo && (
           <div className="demo-banner">
@@ -433,7 +345,7 @@ export function LabApp({
             </div>
           </div>
         )}
-        <main id="workspace-main" className="lab-main">
+        <main id="workspace-main" className={`lab-main${screen === "dashboard" ? " home-main" : ""}`}>
           {screen === "project" && (
             <Link className="breadcrumb" href="/projects">
               Projects <ChevronRight size={14} />
@@ -446,20 +358,14 @@ export function LabApp({
               {person?.name}
             </Link>
           )}
-          <div className="page-heading">
+          {screen !== "dashboard" && <div className="page-heading">
             <div>
               <p className="eyebrow">
-                {screen === "dashboard"
-                  ? `WEEK OF ${shortDate(data.weekStart).toUpperCase()}`
-                  : "VENTURE ENGINEERING LAB"}
+Venture Engineering Lab Tracker
               </p>
               <h1>{heading}</h1>
               <p>
-                {screen === "dashboard"
-                  ? manager
-                    ? "What moved forward? Who needs help? What is due next?"
-                    : `Your weekly updates are due ${deadlineText}.`
-                  : screen === "projects"
+                {screen === "projects"
                     ? "Open a project to read progress. Join the projects you work on."
                     : screen === "team"
                       ? "Everyone who has signed in to the lab. Select a person to see their contact details and projects."
@@ -471,9 +377,7 @@ export function LabApp({
               </p>
             </div>
             <div className="page-actions">
-              {manager &&
-                ((screen === "dashboard" && !active.length) ||
-                  screen === "projects") && (
+              {manager && screen === "projects" && (
                   <button
                     className="button primary"
                     onClick={() => setEditing({ action: "create" })}
@@ -482,16 +386,6 @@ export function LabApp({
                     Create project
                   </button>
                 )}
-              {manager && screen === "dashboard" && active.length > 0 && (
-                <button
-                  className="button secondary"
-                  onClick={copyLink}
-                  disabled={busy}
-                >
-                  <Copy size={16} />
-                  Share website
-                </button>
-              )}
               {screen === "project" &&
                 chosen &&
                 (chosen.state === "active" ? (
@@ -525,7 +419,7 @@ export function LabApp({
                   </span>
                 ))}
             </div>
-          </div>
+          </div>}
           {error && (
             <p className="error" role="alert">
               {error}
@@ -537,367 +431,19 @@ export function LabApp({
             </p>
           )}
           {screen === "dashboard" && (
-            <>
-              {manager ? (
-                !active.length ? (
-                  <section className="panel first-action">
-                    <span className="large-icon">
-                      <FolderKanban size={30} />
-                    </span>
-                    <h2>
-                      {data.projects.length
-                        ? "No active projects"
-                        : "Start with your first project"}
-                    </h2>
-                    <p>
-                      {data.projects.length
-                        ? "Completed and paused projects are available in Projects. Create a project when new work begins."
-                        : "Give it a name and a clear goal. Then share this website so your team can join and report progress."}
-                    </p>
-                    {data.projects.length > 0 && (
-                      <Link className="section-link" href="/projects">
-                        View projects <ArrowRight size={14} />
-                      </Link>
-                    )}
-                  </section>
-                ) : (
-                  <>
-                    <div className="dashboard-metrics">
-                      <div>
-                        <span>Active projects</span>
-                        <strong>{active.length}</strong>
-                      </div>
-                      <div>
-                        <span>
-                          {data.reportingDue.passed
-                            ? "Missing weekly updates"
-                            : "Updates still expected"}
-                        </span>
-                        <strong>{gaps.length}</strong>
-                      </div>
-                      <div>
-                        <span>Members needing help</span>
-                        <strong>
-                          {
-                            new Set([
-                              ...help.map((u) => u.personId),
-                              ...blockedWork.map((w) => w.ownerId),
-                            ]).size
-                          }
-                        </strong>
-                      </div>
-                    </div>
-                    <div className="dashboard-columns">
-                      <div>
-                        <section className="panel dashboard-panel">
-                          <div className="section-heading">
-                            <h2>This week’s reporting</h2>
-                            <HelpTip label="Weekly reporting">
-                              Members report once per project each week. Their
-                              last edit replaces that week’s report. Members who
-                              join after the deadline start reporting next week.
-                            </HelpTip>
-                          </div>
-                          <p className="section-copy">
-                            Due {deadlineText}.{" "}
-                            {data.reportingDue.passed
-                              ? "Missing reports need follow-up."
-                              : "Reports are still being collected."}
-                          </p>
-                          <div className="manager-table-wrap">
-                            <table className="manager-table">
-                              <thead>
-                                <tr>
-                                  <th>Project</th>
-                                  <th>This week</th>
-                                  <th>Needs help</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {active.map((p) => {
-                                  const required = expected.filter(
-                                      (m) => m.projectId === p.id,
-                                    ),
-                                    pending = gaps.filter(
-                                      (m) => m.projectId === p.id,
-                                    ),
-                                    assistance = help.filter(
-                                      (u) => u.projectId === p.id,
-                                    );
-                                  return (
-                                    <tr key={p.id}>
-                                      <td data-label="Project">
-                                        <Link href={`/projects/${p.id}`}>
-                                          {p.name}
-                                        </Link>
-                                        <small>
-                                          {p.phase}
-                                          {p.priority ? ` · ${p.priority}` : ""}
-                                        </small>
-                                        <small>{lastReport(p.id)}</small>
-                                      </td>
-                                      <td data-label="This week">
-                                        <strong>
-                                          {
-                                            required.filter((m) =>
-                                              reported(m.projectId, m.personId),
-                                            ).length
-                                          }
-                                          /{required.length} shared
-                                        </strong>
-                                        <small>
-                                          {!required.length
-                                            ? "No reports expected yet"
-                                            : pending.length
-                                              ? `${data.reportingDue.passed ? "Missing" : "Awaiting"}: ${pending.map((m) => data.people.find((p) => p.id === m.personId)?.name).join(", ")}`
-                                              : "Everyone is up to date"}
-                                        </small>
-                                      </td>
-                                      <td data-label="Needs help">
-                                        {assistance.length ? (
-                                          <span className="needs-help-names">
-                                            {assistance
-                                              .map(
-                                                (u) =>
-                                                  data.people.find(
-                                                    (p) => p.id === u.personId,
-                                                  )?.name,
-                                              )
-                                              .join(", ")}
-                                          </span>
-                                        ) : (
-                                          <span className="muted">None</span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </section>
-                        {(help.length > 0 || blockedWork.length > 0) && (
-                          <section className="panel dashboard-panel">
-                            <h2>Requests for help</h2>
-                            <p className="section-copy">
-                              Open a project to review help requests and blocked
-                              responsibilities.
-                            </p>
-                            {help.map((u) => (
-                              <Link
-                                className="attention-row"
-                                href={`/projects/${u.projectId}`}
-                                key={u.id}
-                              >
-                                <span className="attention-dot" />
-                                <div>
-                                  <strong>
-                                    {
-                                      data.people.find(
-                                        (p) => p.id === u.personId,
-                                      )?.name
-                                    }{" "}
-                                    ·{" "}
-                                    {
-                                      data.projects.find(
-                                        (p) => p.id === u.projectId,
-                                      )?.name
-                                    }
-                                  </strong>
-                                  <p>{u.blockers}</p>
-                                </div>
-                                <ChevronRight size={16} />
-                              </Link>
-                            ))}
-                            {blockedWork.map((w) => (
-                              <Link
-                                className="attention-row"
-                                href={`/projects/${w.projectId}`}
-                                key={w.id}
-                              >
-                                <span className="attention-dot" />
-                                <div>
-                                  <strong>
-                                    {data.people.find((p) => p.id === w.ownerId)
-                                      ?.name ?? "Member"}{" "}
-                                    · {w.projectName}
-                                  </strong>
-                                  <p>{w.name} is blocked.</p>
-                                </div>
-                                <ChevronRight size={16} />
-                              </Link>
-                            ))}
-                          </section>
-                        )}
-                      </div>
-                      <aside>
-                        {deadlinePanel()}
-                        <section className="panel dashboard-panel">
-                          <h2>Invite your team</h2>
-                          <p className="section-copy">
-                            Share the website. Members sign in, confirm their
-                            name and choose their projects.
-                          </p>
-                        </section>
-                      </aside>
-                    </div>
-                  </>
-                )
-              ) : !myProjects.length ? (
-                <section className="panel first-action">
-                  <span className="large-icon">
-                    <FolderKanban size={30} />
-                  </span>
-                  <h2>
-                    {active.length
-                      ? "Choose your first project"
-                      : data.projects.some(
-                            (p) => ownIds.has(p.id) && p.state === "completed",
-                          )
-                        ? "Your projects are complete"
-                        : data.projects.some(
-                              (p) => ownIds.has(p.id) && p.state === "on-hold",
-                            )
-                          ? "Your projects are on hold"
-                          : "No projects yet"}
-                  </h2>
-                  <p>
-                    {active.length
-                      ? "Open the project you work on and select Join project. Then you can share progress here."
-                      : data.projects.some(
-                            (p) => ownIds.has(p.id) && p.state === "completed",
-                          )
-                        ? "Your earlier reports are available in Projects. New active work will appear here when you join it."
-                        : data.projects.some(
-                              (p) => ownIds.has(p.id) && p.state === "on-hold",
-                            )
-                          ? "Weekly reporting is paused. Your projects and earlier reports are available in Projects."
-                          : "Your manager will create the lab’s projects. They will appear here when ready."}
-                  </p>
-                  {active.length > 0 && (
-                    <Link className="button primary" href="/projects">
-                      Choose a project <ArrowRight size={16} />
-                    </Link>
-                  )}
-                  {!active.length &&
-                    data.projects.some(
-                      (p) => ownIds.has(p.id) && p.state === "completed",
-                    ) && (
-                      <Link className="button secondary" href="/projects">
-                        View completed work
-                      </Link>
-                    )}
-                </section>
-              ) : (
-                <div className="dashboard-columns">
-                  <div>
-                    <section className="panel dashboard-panel">
-                      <h2>Your projects this week</h2>
-                      <p className="section-copy">
-                        Share what you accomplished and what you will do next.
-                      </p>
-                      {myProjects.map((p) => {
-                        const saved = reported(p.id, data.identity.personId);
-                        return (
-                          <div className="weekly-row" key={p.id}>
-                            <div>
-                              <Link href={`/projects/${p.id}`}>{p.name}</Link>
-                              <span>
-                                {saved
-                                  ? "Shared this week"
-                                  : gaps.some(
-                                        (m) =>
-                                          m.projectId === p.id &&
-                                          m.personId === data.identity.personId,
-                                      )
-                                    ? data.reportingDue.passed
-                                      ? "Update missing"
-                                      : "Ready for your update"
-                                    : "First update expected next week"}
-                              </span>
-                              {(p.workstreams ?? [])
-                                .filter(
-                                  (w) =>
-                                    !w.archived &&
-                                    w.ownerId === data.identity.personId,
-                                )
-                                .map((w) => (
-                                  <Link
-                                    className={`my-responsibility ${w.status === "Blocked" ? "late-label" : ""}`}
-                                    key={w.id}
-                                    href={`/projects/${p.id}`}
-                                  >
-                                    {w.name} · {w.status}
-                                    {w.due && w.status !== "Done"
-                                      ? ` · Due ${shortDate(w.due)}`
-                                      : ""}
-                                  </Link>
-                                ))}
-                            </div>
-                            {saved && (
-                              <CheckCircle2 className="green-icon" size={18} />
-                            )}
-                            <button
-                              className="button secondary"
-                              aria-label={`${saved ? "Edit" : "Write"} update for ${p.name}`}
-                              onClick={() => setEntry(p.id)}
-                            >
-                              {saved ? "Edit update" : "Write update"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </section>
-                    {latest.some((u) => ownIds.has(u.projectId)) && (
-                      <section className="panel dashboard-panel">
-                        <h2>Recent team progress</h2>
-                        {latest
-                          .filter((u) => ownIds.has(u.projectId))
-                          .slice(0, 3)
-                          .map((u) => (
-                            <Link
-                              className="activity-row"
-                              href={`/projects/${u.projectId}`}
-                              key={u.id}
-                            >
-                              <Avatar
-                                name={
-                                  data.people.find((p) => p.id === u.personId)
-                                    ?.name ?? "Member"
-                                }
-                              />
-                              <div>
-                                <strong>
-                                  {
-                                    data.people.find((p) => p.id === u.personId)
-                                      ?.name
-                                  }
-                                </strong>
-                                <p>{u.progress}</p>
-                              </div>
-                              <ChevronRight size={16} />
-                            </Link>
-                          ))}
-                      </section>
-                    )}
-                  </div>
-                  <aside>
-                    {deadlinePanel()}
-                    <section className="panel dashboard-panel guide-card">
-                      <h2>A useful update</h2>
-                      <ol>
-                        <li>What did you accomplish?</li>
-                        <li>What will you do next?</li>
-                        <li>Do you need help?</li>
-                      </ol>
-                      <p className="field-help">
-                        Your name and date are recorded automatically.
-                      </p>
-                    </section>
-                  </aside>
-                </div>
-              )}
-            </>
+            <HomePage
+              data={data}
+              busy={busy}
+              writeUpdate={setEntry}
+              createProject={() => setEditing({ action: "create" })}
+              changeStatus={async (projectId, workstreamId, status) => {
+                await action(async () => {
+                  await mutate("/api/workstreams", { action: "status", projectId, workstreamId, status }, "PATCH");
+                  await refresh();
+                  setNotice(status === "Done" ? "Responsibility completed." : "Responsibility reopened.");
+                });
+              }}
+            />
           )}
           {screen === "projects" && (
             <>
@@ -1414,6 +960,6 @@ export function LabApp({
           }}
         />
       )}
-    </div>
+    </WorkspaceChrome>
   );
 }

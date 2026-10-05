@@ -1,0 +1,61 @@
+{
+  "status": "Proposed images, awaiting user review; not approved or implemented",
+  "productName": "Venture Engineering Lab Tracker",
+  "screens": [
+    {
+      "name": "Home",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-3f69dd3b-b013-4293-9cbb-29e646ade92f.png"
+    },
+    {
+      "name": "Projects",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-c6e17aa1-67f0-41ac-96e5-fa0e0aef1fca.png"
+    },
+    {
+      "name": "Project workspace",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-b4d28053-4fb6-4b05-830f-f6a8b693b831.png"
+    },
+    {
+      "name": "Create or edit project",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-ee4aaeac-0aed-4676-8273-283aa24718a1.png"
+    },
+    {
+      "name": "Weekly update",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-2778d679-cd9c-455a-ad86-a3d12770c28d.png"
+    },
+    {
+      "name": "Team",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-dd49d994-a23d-49dc-859c-b4fab048075f.png"
+    },
+    {
+      "name": "Member page",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-f9910034-5e90-4820-9e50-554e51155d70.png"
+    },
+    {
+      "name": "Account",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-2f6527b8-2336-4e9b-82c5-5cf790634938.png"
+    },
+    {
+      "name": "Reporting schedule",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-68666874-3e56-41b0-ac78-681c009519db.png"
+    },
+    {
+      "name": "First-time project selection",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-49216e82-089c-4a19-a7d5-64748f5fb849.png"
+    },
+    {
+      "name": "Responsibility editor",
+      "image": "/Users/harsimran/.codex/generated_images/01a10d07-f5b7-7382-bec4-4a4e14d748de/exec-30313e5e-3d21-4539-aaab-f29033ff979f.png"
+    }
+  ],
+  "implementationRequirements": [
+    "Use existing permissions: manager-only project editing and reporting settings; members see their own weekly forms.",
+    "No all-cap headings or labels, logos, initials or profile photos.",
+    "Profile fields are name, academicRole, affiliation, reminders and read-only Google email.",
+    "Use actual WORKSTREAM_STATUSES; mocked Planned needs review against existing Not started before implementation.",
+    "Account/settings should never highlight Home as active.",
+    "No decorative gradients; tokens from design.md are authoritative.",
+    "Mock people, responsibilities and dates are illustrative, never seed production data.",
+    "No connected-workspace card unless useful and explicitly accepted in review.",
+    "Do not implement until user selects or approves these specific images."
+  ]
+}
