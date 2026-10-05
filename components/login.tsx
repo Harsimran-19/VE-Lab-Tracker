@@ -111,7 +111,7 @@ export function Login({
                 : "Sign-in could not be completed. Please try again or ask your administrator for help."}
             </p>
           )}
-          <p className="login-note">First time here? Signing in creates your account.</p>
+          {/* <p className="login-note">First time here? Signing in creates your account.</p> */}
         </div>
       </section>
     </main>
