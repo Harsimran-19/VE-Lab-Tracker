@@ -1,10 +1,16 @@
 import { Login } from "./login";
 import { LabApp } from "./lab-app";
 import { authorizedContext, loginIdentity } from "@/lib/auth";
-import { adminEmails, isDemo, missingConfig } from "@/lib/config";
+import { isDemo, missingConfig } from "@/lib/config";
 import { workspaceFor, AppError } from "@/lib/access";
 import { notFound } from "next/navigation";
-export type Screen = "dashboard" | "projects" | "project" | "account";
+export type Screen =
+  | "dashboard"
+  | "projects"
+  | "project"
+  | "team"
+  | "member"
+  | "account";
 function ConnectionError({ error }: { error: unknown }) {
   return (
     <main className="service-error">
@@ -29,10 +35,12 @@ function ConnectionError({ error }: { error: unknown }) {
 export async function WorkspacePage({
   screen,
   projectId,
+  personId,
   error,
 }: {
   screen: Screen;
   projectId?: string;
+  personId?: string;
   error?: string;
 }) {
   const missing = isDemo() ? [] : missingConfig();
@@ -41,7 +49,9 @@ export async function WorkspacePage({
       ? "/"
       : projectId
         ? `/projects/${encodeURIComponent(projectId)}`
-        : `/${screen}`;
+        : personId
+          ? `/team/${encodeURIComponent(personId)}`
+          : `/${screen}`;
   if (missing.length || !(await loginIdentity()))
     return <Login missing={missing} error={error} callbackUrl={callbackUrl} />;
   let context: Awaited<ReturnType<typeof authorizedContext>>;
@@ -52,15 +62,18 @@ export async function WorkspacePage({
   }
   if (projectId && !context.store.projects.some((p) => p.id === projectId))
     notFound();
+  if (personId && !context.store.people.some((p) => p.id === personId))
+    notFound();
   try {
     const { identity, store } = context;
     const initial = workspaceFor(store, identity, isDemo());
     return (
       <LabApp
-        key={`${screen}-${projectId ?? ""}-${initial.identity.personId}`}
+        key={`${screen}-${projectId ?? personId ?? ""}-${initial.identity.personId}`}
         initial={initial}
         screen={screen}
         projectId={projectId}
+        personId={personId}
       />
     );
   } catch (error) {

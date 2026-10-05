@@ -11,9 +11,19 @@ Member: Google sign-in → confirm name → choose projects → My work → repo
 - **Home:** manager lab overview or the member's own work.
 - **Projects:** discover and join active projects, read shared reports, or review completed projects.
 - **Project page:** latest reports and real members. Managers change research phase, set a milestone and date, or complete/reopen the project. Earlier weeks are available when history exists.
+- **Team:** every actual signup, including people without projects. Both roles can open a member’s contact details and project links from this directory or a report/project member name.
 - **Account:** name and email preference. Managers also set the reporting day, time and timezone and test their email delivery.
 
-Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. There are no publication fields, affiliation/biography forms, imported people, roster linking, responsibility assignment or people-management page. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. There are no publication fields, affiliation/biography forms, imported people, roster linking or responsibility assignment. Team is a shared directory; members sign themselves up. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+
+## Testing both roles on your deployment
+
+1. Sign in as the manager. Open **Team** to see everyone who has signed in; click a name for email and project links.
+2. In a separate private browser window, sign in with a different Google email, confirm the name and choose projects later.
+3. Reload the manager’s Team page. The new person appears even without joining a project.
+4. As the member, open Projects, join your test project and submit a weekly update. As the manager, open that project to read the report and click the author’s name to see their details.
+
+Creating a project does not create members. Members appear after their own Google sign-in.
 
 ## Fresh Google Sheets data
 

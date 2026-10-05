@@ -2123,11 +2123,34 @@ fieldset {
   gap: 14px;
   margin-top: 20px;
 }
-.project-members > div {
+.project-members > a {
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 13px;
+  color: var(--ink);
+  border-radius: 6px;
+}
+.project-members > a:hover { color: var(--primary); }
+.team-count { margin-bottom: 16px; color: var(--muted); }
+.team-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.team-card { display: flex; align-items: center; gap: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--ink); }
+.team-card:hover { border-color: #a9b9e9; }
+.team-card-copy { flex: 1; min-width: 0; }
+.team-card h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.team-email, .member-email { overflow-wrap: anywhere; }
+.team-email { color: var(--muted); font-size: 14px; margin-top: 3px; }
+.team-projects { font-size: 13px; margin-top: 10px; overflow-wrap: anywhere; }
+.team-guidance { color: var(--muted); margin-top: 20px; }
+.member-layout { display: grid; gap: 24px; }
+.member-contact { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.member-email { display: flex; gap: 10px; align-items: center; max-width: 100%; }
+.member-project-heading { margin-bottom: 16px; }
+@media (max-width: 700px) {
+  .team-card { padding: 18px 16px; gap: 12px; align-items: flex-start; }
+  .team-card h2 { font-size: 16px; }
+  .team-card .avatar { width: 34px; height: 34px; font-size: 11px; }
+  .team-card > svg { margin-top: 7px; }
 }
 .project-members small {
   display: block;

@@ -64,7 +64,7 @@ test("manager starts with an empty lab and creates a project using only name and
   expect(initial.memberships).toHaveLength(0);
   expect(initial.updates).toHaveLength(0);
   expect(initial.people).toHaveLength(1);
-  await expect(page.getByRole("navigation").getByRole("link")).toHaveCount(3);
+  await expect(page.getByRole("navigation").getByRole("link")).toHaveCount(4);
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
@@ -189,6 +189,24 @@ test("members read team progress and self-join but cannot change manager data or
 }) => {
   await sample(page, "new");
   await onboard(page, "Jamie Rao");
+  const memberCookies = await page.context().cookies();
+  const newMember = (await store(page)).identity.personId;
+  // Signing up is enough to appear in Team: no project membership is required.
+  await sample(page, "admin");
+  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await expect(page.locator(".team-card")).toHaveCount(3);
+  const unjoined = page.locator(".team-card").filter({ hasText: "Jamie Rao" });
+  await expect(unjoined).toContainText("No projects joined");
+  await unjoined.click();
+  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No projects joined", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toHaveCount(0);
+  await page.context().addCookies(memberCookies);
+  await page.goto(`/team/${newMember}`);
+  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toBeVisible();
+  await page.goto("/");
   await page
     .getByRole("link", { name: "Choose a project", exact: true })
     .click();
@@ -263,6 +281,44 @@ test("members read team progress and self-join but cannot change manager data or
       })
     ).status(),
   ).toBe(400);
+});
+
+test("Team lets both roles open current member details and projects on desktop and mobile", async ({ page }) => {
+  await sample(page, "admin");
+  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
+  await expect(page.locator(".team-card")).toHaveCount(3);
+  await page.screenshot({ path: "test-results/team-directory.png", fullPage: true });
+  await page.locator(".team-card").filter({ hasText: "Alex Chen" }).click();
+  await expect(page.getByRole("heading", { name: "Alex Chen", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "member@demo.invalid", exact: true })).toHaveAttribute("href", "mailto:member@demo.invalid");
+  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toHaveCount(0);
+  await page.locator(".research-card").filter({ hasText: "Interview pilot" }).click();
+  await page.locator(".project-members").getByRole("link", { name: "Jamie Rao", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
+  await expect(page.locator(".research-card")).toContainText("Interview pilot");
+  await page.screenshot({ path: "test-results/member-details.png", fullPage: true });
+  // Next.js can stream a not-found page with HTTP 200; verify its actual UI.
+  await page.goto("/team/does-not-exist");
+  await expect(page.getByRole("heading", { name: "Member not found.", exact: true })).toBeVisible();
+  await expect(page.locator(".member-contact")).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to Team", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await page.goto("/people");
+  await expect(page).toHaveURL(/\/team$/);
+  await sample(page, "member");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
+  await expect(page.locator(".team-card")).toHaveCount(3);
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Team", exact: true })).toHaveAttribute("aria-current", "page");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/mobile-team.png", fullPage: true });
+  await page.locator(".team-card").filter({ hasText: "Jamie Rao" }).click();
+  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/mobile-member-details.png", fullPage: true });
+  await page.locator(".research-card").click();
+  await expect(page.getByText("Reviewed the sampling plan.", { exact: true })).toBeVisible();
 });
 
 test("manager reviews real members, sets only phase and milestone, and completion stops reporting", async ({
@@ -474,6 +530,12 @@ test("removed legacy flows stay unavailable and anonymous production cannot read
   const origin = "http://localhost:3101";
   await page.goto(origin);
   await expect(page.getByText("Google setup is still needed")).toBeVisible();
+  for (const path of ["/team", "/team/private-member"]) {
+    await page.goto(`${origin}${path}`);
+    await expect(page.getByText("Google setup is still needed")).toBeVisible();
+    await expect(page.locator(".team-card, .member-contact")).toHaveCount(0);
+    await expect(page.getByRole("navigation")).toHaveCount(0);
+  }
   expect(
     (
       await page.request.post(`${origin}/api/demo`, { form: { view: "admin" } })

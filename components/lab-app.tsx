@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   UserRound,
+  Users,
 } from "lucide-react";
 import type { Project, Update, Workspace } from "@/lib/types";
 import { localDateTime, dayDifference } from "@/lib/calendar";
@@ -26,18 +27,23 @@ import { EntryForm } from "./entry-form";
 import { ProfileForm, SettingsForm } from "./profile-form";
 import { Welcome } from "./welcome";
 import { HelpTip } from "./help-tip";
+import { TeamDirectory, MemberContact, memberProjects } from "./team-directory";
 import type { Screen } from "./workspace-page";
 function Avatar({ name }: { name: string }) {
-  return <span className="avatar">{initials(name)}</span>;
+  return (
+    <span className="avatar" aria-hidden="true">{initials(name)}</span>
+  );
 }
 export function LabApp({
   initial,
   screen = "dashboard",
   projectId,
+  personId,
 }: {
   initial: Workspace;
   screen?: Screen;
   projectId?: string;
+  personId?: string;
 }) {
   const [data, setData] = useState(initial),
     [search, setSearch] = useState(""),
@@ -61,7 +67,8 @@ export function LabApp({
     ownIds = new Set(own.map((m) => m.projectId)),
     active = data.projects.filter((p) => p.state === "active"),
     myProjects = active.filter((p) => ownIds.has(p.id)),
-    chosen = data.projects.find((p) => p.id === projectId);
+    chosen = data.projects.find((p) => p.id === projectId),
+    person = data.people.find((p) => p.id === personId);
   const expected = data.memberships.filter(
     (m) =>
       active.some((p) => p.id === m.projectId) &&
@@ -144,7 +151,9 @@ export function LabApp({
         <div className="update-card-head">
           <Avatar name={name} />
           <div>
-            <strong>{name}</strong>
+            <Link href={`/team/${encodeURIComponent(u.personId)}`} prefetch={false}>
+              <strong>{name}</strong>
+            </Link>
             <p>
               Week of {shortDate(u.weekStart)} ·{" "}
               {reportDate(u.updatedAt, data.settings.timezone)}
@@ -249,11 +258,15 @@ export function LabApp({
         : "My work"
       : screen === "projects"
         ? "Projects"
-        : screen === "account"
-          ? manager
-            ? "Account & settings"
-            : "Account"
-          : chosen?.name;
+        : screen === "team"
+          ? "Team"
+          : screen === "member"
+            ? person?.name
+            : screen === "account"
+              ? manager
+                ? "Account & settings"
+                : "Account"
+              : chosen?.name;
   const deadlineText = `${shortDate(data.reportingDue.date)} at ${data.reportingDue.time} (${data.settings.timezone})`;
   return (
     <div className="lab-shell">
@@ -283,6 +296,12 @@ export function LabApp({
               label: "Projects",
               icon: FolderKanban,
               active: screen === "projects" || screen === "project",
+            },
+            {
+              path: "/team",
+              label: "Team",
+              icon: Users,
+              active: screen === "team" || screen === "member",
             },
             {
               path: "/account",
@@ -359,6 +378,11 @@ export function LabApp({
               {chosen?.name}
             </Link>
           )}
+          {screen === "member" && (
+            <Link className="breadcrumb" href="/team">
+              Team <ChevronRight size={14} />{person?.name}
+            </Link>
+          )}
           <div className="page-heading">
             <div>
               <p className="eyebrow">
@@ -374,9 +398,13 @@ export function LabApp({
                     : `Your weekly updates are due ${deadlineText}.`
                   : screen === "projects"
                     ? "Open a project to read progress. Join the projects you work on."
-                    : screen === "account"
-                      ? "Keep your account and reporting preferences up to date."
-                      : chosen?.goal}
+                    : screen === "team"
+                      ? "Everyone who has signed in to the lab. Select a person to see their contact details and projects."
+                      : screen === "member"
+                        ? "Contact details and projects. Open a project to read shared progress."
+                        : screen === "account"
+                          ? "Keep your account and reporting preferences up to date."
+                          : chosen?.goal}
               </p>
             </div>
             <div className="page-actions">
@@ -962,7 +990,11 @@ export function LabApp({
                             data.people.find((p) => p.id === m.personId)
                               ?.name ?? "Member";
                           return (
-                            <div key={m.id}>
+                            <Link
+                              key={m.id}
+                              href={`/team/${encodeURIComponent(m.personId)}`}
+                              prefetch={false}
+                            >
                               <Avatar name={name} />
                               <span>
                                 {name}
@@ -970,7 +1002,7 @@ export function LabApp({
                                   <small>You</small>
                                 )}
                               </span>
-                            </div>
+                            </Link>
                           );
                         })}
                     </div>
@@ -1014,6 +1046,23 @@ export function LabApp({
                 </aside>
               </div>
             </>
+          )}
+          {screen === "team" && <TeamDirectory data={data} />}
+          {screen === "member" && person && (
+            <div className="member-layout">
+              <MemberContact person={person} own={person.id === data.identity.personId} />
+              <section aria-label="Member projects">
+                <h2 className="member-project-heading">Projects</h2>
+                {memberProjects(data, person.id).length ? (
+                  <div className="projects-list">{memberProjects(data, person.id).map(projectCard)}</div>
+                ) : (
+                  <div className="panel empty-state">
+                    <h3>No projects joined</h3>
+                    <p>{person.name} is part of the team and hasn’t joined a project yet.</p>
+                  </div>
+                )}
+              </section>
+            </div>
           )}
           {screen === "account" && (
             <div className="profile-layout">
