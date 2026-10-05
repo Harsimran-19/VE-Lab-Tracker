@@ -177,17 +177,15 @@ The app automatically creates six clean tabs: **LabProjects, LabMembers, LabMemb
 
 **No Gmail password or new domain is needed. Email is optional; it does not block deployment or Google login.**
 
-1. Use the same **SMTP host and port** as InternUp. Zoho accounts may use `.com`, `.in` or another regional server; copy the actual host instead of guessing.
-2. The private **`.env.email.local`** file in this cloud workspace contains the sender, password and generated scheduler secret. Confirm its `SMTP_HOST` matches InternUp.
-3. In **Vercel → Settings → Environment Variables → Import .env**, import that file for **Production**, save and **redeploy**.
-4. In the app: **Account & settings → Send me a test email**. Check your inbox/spam.
+The confirmed SMTP endpoint, **`smtp.zoho.com:587`**, is in `lib/mail-config.ts` with required STARTTLS. No host/port ENV fields are needed.
+
+1. Import the prepared private **`.env.email.local`** file in **Vercel → Settings → Environment Variables → Import .env → Production**, then save and redeploy.
+2. In the app: **Account & settings → Send me a test email**. Check your inbox/spam.
 
 | Vercel variable | Value |
 | --- | --- |
 | `ZOHO_EMAIL` | `contact@internup.org` |
 | `ZOHO_PASSWORD` | The existing mailbox's SMTP credential; private only |
-| `SMTP_HOST` | The exact SMTP host used by InternUp |
-| `SMTP_PORT` | InternUp's SMTP port: 465 (TLS) or 587 (required STARTTLS) |
 | `CRON_SECRET` | Already generated in the private file |
 
 The private file is excluded from Git. Cloud and Vercel settings are separate; a local file does not update Vercel automatically. If Zoho requires an application-specific password or disables SMTP for this account, its account owner must update that credential or enable SMTP. Never send passwords in chat or commit them to Git.
@@ -231,8 +229,6 @@ NEXTAUTH_SECRET=FICTIONAL_SESSION_SECRET_REPLACE_WITH_GENERATED_VALUE
 
 ZOHO_EMAIL=fictional-sender@example.com
 ZOHO_PASSWORD=FICTIONAL_ZOHO_PASSWORD_NOT_VALID
-SMTP_HOST=smtppro.zoho.com
-SMTP_PORT=465
 CRON_SECRET=FICTIONAL_CRON_SECRET_REPLACE_WITH_64_RANDOM_HEX_CHARACTERS
 ```
 
@@ -248,4 +244,4 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | Spreadsheet not found                | Step 2: copy only the ID; Step 4: check sharing                                                             |
 | Invalid private key                  | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines                        |
 | Existing app Sheet / changed headers | Restore the six Lab tab headers from `lib/sheets.ts`; never overwrite existing records                      |
-| Deadline emails not arriving         | Step 8: Zoho SMTP host + sender + password + cron secret, redeploy, test email, then Cron Jobs                    |
+| Deadline emails not arriving         | Step 8: Zoho sender + password + cron secret, redeploy, test email, then Cron Jobs                    |

@@ -249,14 +249,12 @@ test("cron rejects missing, weak or incorrect secrets without sending anything",
     secret,
   );
 });
-test("Zoho SMTP uses TLS, preserves credentials and requires recipient acceptance", async () => {
-  const names = ["ZOHO_EMAIL", "ZOHO_PASSWORD", "SMTP_HOST", "SMTP_PORT"];
+test("Zoho SMTP requires STARTTLS, preserves credentials and requires recipient acceptance", async () => {
+  const names = ["ZOHO_EMAIL", "ZOHO_PASSWORD"];
   const saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
   Object.assign(process.env, {
     ZOHO_EMAIL: "sender@example.com",
     ZOHO_PASSWORD: "unit-test pass with spaces",
-    SMTP_HOST: "smtppro.zoho.com",
-    SMTP_PORT: "465",
   });
   let closed = 0;
   const transport = nodemailer.createTransport({ jsonTransport: true });
@@ -264,9 +262,9 @@ test("Zoho SMTP uses TLS, preserves credentials and requires recipient acceptanc
     nodemailer,
     "createTransport",
     (options: SMTPTransport.Options) => {
-      assert.equal(options.host, "smtppro.zoho.com");
-      assert.equal(options.port, 465);
-      assert.equal(options.secure, true);
+      assert.equal(options.host, "smtp.zoho.com");
+      assert.equal(options.port, 587);
+      assert.equal(options.secure, false);
       assert.equal(options.requireTLS, true);
       assert.deepEqual(options.auth, {
         user: "sender@example.com",

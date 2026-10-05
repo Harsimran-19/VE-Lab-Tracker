@@ -49,8 +49,6 @@ export default defineConfig({
         GOOGLE_SHEET_ID: "",
         ZOHO_EMAIL: "",
         ZOHO_PASSWORD: "",
-        SMTP_HOST: "",
-        SMTP_PORT: "465",
         CRON_SECRET: "",
       },
     },

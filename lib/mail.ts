@@ -7,7 +7,7 @@ export function mailConfiguration() {
   const settings = smtpSettings();
   if (!settings)
     throw new AppError(
-      "Email is not configured. Set the Zoho sender, password and SMTP host in private environment settings.",
+      "Email is not configured. Set ZOHO_EMAIL and ZOHO_PASSWORD in private environment settings.",
       503,
     );
   return settings;
@@ -16,12 +16,13 @@ export async function sendMail(
   message: { to: string; subject: string; text: string; id: string },
   transportFactory = nodemailer.createTransport,
 ) {
-  const { host, port, secure, user, password } = mailConfiguration();
+  const { host, port, secure, requireTLS, user, password } =
+    mailConfiguration();
   const transport = transportFactory({
     host,
     port,
     secure,
-    requireTLS: true,
+    requireTLS,
     auth: { user, pass: password },
     connectionTimeout: 10000,
     greetingTimeout: 10000,
@@ -45,7 +46,7 @@ export async function sendMail(
     return result.messageId as string;
   } catch {
     throw new AppError(
-      "The mail server did not confirm sending. Check the SMTP host, port and Zoho credentials in private environment settings.",
+      "The mail server did not confirm sending. Check Zoho SMTP access and the credentials in private environment settings.",
       503,
     );
   } finally {

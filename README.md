@@ -32,7 +32,7 @@ One deterministic report ID per person/project/week prevents duplicate logical r
 
 `vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
 
-Email uses `ZOHO_EMAIL`, `ZOHO_PASSWORD` and the existing InternUp `SMTP_HOST`; `SMTP_PORT` defaults to 465 (TLS) and also supports 587 with required STARTTLS. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
+Email uses `ZOHO_EMAIL` and `ZOHO_PASSWORD` in private ENV settings. `lib/mail-config.ts` fixes InternUp’s endpoint at `smtp.zoho.com:587` with required STARTTLS; host and port are not ENV inputs. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
 
 ## Development and verification
 
