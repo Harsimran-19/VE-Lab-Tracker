@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { AppError } from "@/lib/access";
-import { isDemo } from "@/lib/config";
+import { adminEmails, isDemo } from "@/lib/config";
 import { readStore, addReminder, saveReminder } from "@/lib/store";
 import {
   requireCron,
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
         send: sendReminder,
       },
       new Date(),
-      process.env.LAB_TIMEZONE || "Asia/Kolkata",
+      adminEmails(),
     );
     return NextResponse.json(result, { status: result.failed ? 503 : 200 });
   } catch (e) {

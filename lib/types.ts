@@ -7,82 +7,45 @@ export const STAGES = [
   "Writing",
   "Submission",
 ] as const;
-export const PIPELINES = [
-  "Not submitted",
-  "In preparation",
-  "Under review",
-  "R&R",
-  "Rejected - repositioning",
-  "Resubmitted",
-  "Accepted",
-] as const;
-export const PRIORITIES = [
-  "P1 - push",
-  "P2 - steady",
-  "P3 - background",
-] as const;
-export const STATUSES = ["On track", "Blocked", "Done"] as const;
 export interface Project {
   id: string;
   name: string;
-  title: string;
-  stage: string;
-  pipeline: string;
-  methods: string;
-  journal: string;
-  conference: string;
-  priority: string;
+  goal: string;
+  phase: string;
   milestone: string;
   due: string;
-  notes: string;
+  state: "active" | "completed";
 }
 export interface Person {
   id: string;
   name: string;
   email: string;
-  affiliation: string;
-  role: "admin" | "member";
+  setupComplete: string;
+  reminders: string;
 }
-export interface Assignment {
+export interface Membership {
   id: string;
   projectId: string;
   personId: string;
-  responsibility: string;
-  status: string;
-  due: string;
-}
-export interface Collaborator {
-  id: string;
-  projectId: string;
-  name: string;
-  affiliation: string;
-  role: string;
+  joinedAt: string;
 }
 export interface Update {
   id: string;
   createdAt: string;
+  updatedAt: string;
+  weekStart: string;
   projectId: string;
-  assignmentId: string;
   personId: string;
   progress: string;
-  blockers: string;
   nextPlan: string;
-  status: string;
+  needsHelp: string;
+  blockers: string;
 }
-export const POSITIONS = [
-  "Student",
-  "Research assistant",
-  "Postdoc",
-  "PhD",
-  "Principal investigator",
-  "Other",
-] as const;
-export interface Profile {
+export interface Settings {
   id: string;
-  position: string;
-  expertise: string;
-  bio: string;
-  reminders: string;
+  reportingDay: string;
+  reportingTime: string;
+  timezone: string;
 }
 export interface Reminder {
   id: string;
@@ -94,22 +57,13 @@ export interface Reminder {
   sentAt: string;
   providerId: string;
 }
-export interface Onboarding {
-  id: string;
-  completedAt: string;
-  rosterId: string;
-  status: string;
-  requesterEmail: string;
-}
 export interface Store {
   projects: Project[];
   people: Person[];
-  assignments: Assignment[];
-  collaborators: Collaborator[];
+  memberships: Membership[];
   updates: Update[];
-  profiles?: Profile[];
-  reminders?: Reminder[];
-  onboarding?: Onboarding[];
+  settings: Settings;
+  reminders: Reminder[];
 }
 export interface Identity {
   email: string;
@@ -117,17 +71,30 @@ export interface Identity {
   role: "admin" | "member";
   personId: string;
 }
-export interface Workspace extends Store {
+export interface Workspace extends Omit<Store, "reminders"> {
   identity: Identity;
   demo: boolean;
-  needsSetup: boolean;
   needsOnboarding: boolean;
-  availableProjects: Pick<Project, "id" | "name">[];
-  protectedPersonIds?: string[];
-  preview?: { adminName: string };
   today: string;
   weekStart: string;
-  timezone: string;
+  reportingDue: { date: string; time: string; passed: boolean };
   emailReady: boolean;
+  cronReady: boolean;
   reminderHealth?: { sent: number; pending: number };
+}
+export const defaultSettings: Settings = {
+  id: "lab",
+  reportingDay: "5",
+  reportingTime: "18:00",
+  timezone: "Asia/Kolkata",
+};
+export function emptyStore(): Store {
+  return {
+    projects: [],
+    people: [],
+    memberships: [],
+    updates: [],
+    settings: { ...defaultSettings },
+    reminders: [],
+  };
 }

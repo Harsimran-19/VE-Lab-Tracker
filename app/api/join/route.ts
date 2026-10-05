@@ -1,33 +1,29 @@
-import { membershipId } from "@/lib/membership";
 import { NextResponse } from "next/server";
 import { authorizedContext } from "@/lib/auth";
 import { AppError, requireSameOrigin } from "@/lib/access";
 import { apiError, readJson } from "@/lib/api";
 import { joinSchema } from "@/lib/schema";
-import { saveAssignment } from "@/lib/store";
+import { membershipId } from "@/lib/membership";
+import { saveMembership } from "@/lib/store";
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
     const { identity, store } = await authorizedContext();
     const { projectId } = joinSchema.parse(await readJson(request));
-    if (!store.projects.some((p) => p.id === projectId))
-      throw new AppError("Project not found.", 404);
-    if (!store.people.some((p) => p.id === identity.personId))
-      throw new AppError("Initialize the spreadsheet first.", 409);
-    const existing = store.assignments.find(
-      (a) => a.projectId === projectId && a.personId === identity.personId,
-    );
-    if (existing) return NextResponse.json({ assignment: existing });
-    const assignment = {
+    const project = store.projects.find((p) => p.id === projectId);
+    if (!project) throw new AppError("Project not found.", 404);
+    if (project.state !== "active")
+      throw new AppError("This project is complete.", 409);
+    const membership = store.memberships.find(
+      (m) => m.projectId === projectId && m.personId === identity.personId,
+    ) ?? {
       id: membershipId(identity.personId, projectId),
-      personId: identity.personId,
       projectId,
-      responsibility: "Project work",
-      status: "In progress",
-      due: "",
+      personId: identity.personId,
+      joinedAt: new Date().toISOString(),
     };
-    await saveAssignment(assignment, false);
-    return NextResponse.json({ assignment }, { status: 201 });
+    await saveMembership(membership);
+    return NextResponse.json({ membership });
   } catch (e) {
     return apiError(e);
   }

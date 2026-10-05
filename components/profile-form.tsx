@@ -1,9 +1,7 @@
 "use client";
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { Workspace } from "@/lib/types";
-import { POSITIONS } from "@/lib/types";
 import { mutate } from "./forms";
-
 export function ProfileForm({
   data,
   saved,
@@ -11,137 +9,59 @@ export function ProfileForm({
   data: Workspace;
   saved: () => Promise<void>;
 }) {
-  const expertiseHelp = useId();
-  const person = data.people.find((p) => p.id === data.identity.personId);
-  const profile = data.profiles?.find((p) => p.id === data.identity.personId);
-  const [form, setForm] = useState({
-    name: person?.name ?? data.identity.name,
-    affiliation: person?.affiliation ?? "",
-    position: profile?.position ?? "",
-    expertise: profile?.expertise ?? "",
-    bio: profile?.bio ?? "",
-    reminders: profile?.reminders !== "false",
-  });
-  const [busy, setBusy] = useState(false),
+  const person = data.people.find((p) => p.id === data.identity.personId)!,
+    [name, setName] = useState(person.name),
+    [reminders, setReminders] = useState(person.reminders !== "false"),
+    [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
     setError("");
     setNotice("");
-    setBusy(true);
     try {
-      await mutate("/api/profile", form, "PATCH");
+      await mutate("/api/profile", { name, reminders }, "PATCH");
       await saved();
-      setNotice("Profile saved. Your expertise is visible in Teammates.");
-    } catch (error) {
-      setError((error as Error).message);
+      setNotice("Account saved.");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   return (
     <form className="panel profile-form" onSubmit={submit}>
-      <fieldset
-        disabled={busy || Boolean(data.preview)}
-        className="entry-fields"
-      >
-        <h2>About you</h2>
-        <p className="section-copy">
-          Help the team understand your work and find you for collaboration.
+      <h2>Your account</h2>
+      <p className="section-copy">
+        Your name is shown beside your project updates.
+      </p>
+      <fieldset className="entry-fields" disabled={busy}>
+        <label>
+          Your name
+          <input
+            required
+            maxLength={150}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={reminders}
+            onChange={(e) => setReminders(e.target.checked)}
+          />
+          Email me relevant reminders
+        </label>
+        <p className="field-help">
+          Weekly reminders only for updates you haven’t submitted, plus
+          deadlines for your active projects.
         </p>
-        <div className="form-grid">
-          <label>
-            Name
-            <input
-              required
-              maxLength={150}
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </label>
-          <label>
-            Position
-            <select
-              aria-label="Position"
-              value={form.position}
-              onChange={(e) => setForm({ ...form, position: e.target.value })}
-            >
-              <option value="">Choose your position</option>
-              {POSITIONS.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <label>
-          Affiliation
-          <input
-            maxLength={300}
-            value={form.affiliation}
-            onChange={(e) => setForm({ ...form, affiliation: e.target.value })}
-          />
-        </label>
-        <label>
-          Expertise
-          <input
-            aria-label="Expertise"
-            aria-describedby={expertiseHelp}
-            maxLength={1000}
-            placeholder="For example: LLMs, qualitative interviews, statistics"
-            value={form.expertise}
-            onChange={(e) => setForm({ ...form, expertise: e.target.value })}
-          />
-          <span className="field-help" id={expertiseHelp}>
-            Separate skills with commas so people can find you.
-          </span>
-        </label>
-        <label>
-          Research interests
-          <textarea
-            rows={3}
-            maxLength={2000}
-            value={form.bio}
-            onChange={(e) => setForm({ ...form, bio: e.target.value })}
-          />
-        </label>
-        <div className="profile-section">
-          <h2>Deadline emails</h2>
-          <p className="section-copy">
-            For projects you join: one reminder within three days before a
-            deadline, on the due date, and after it passes. Completed
-            responsibilities stop sending reminders.
-          </p>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={form.reminders}
-              onChange={(e) =>
-                setForm({ ...form, reminders: e.target.checked })
-              }
-            />
-            Send me deadline reminders
-          </label>
-          <p className="field-help">
-            Delivered to your Google account email.{" "}
-            {data.demo
-              ? "Email sending is off in this sample workspace."
-              : !data.emailReady
-                ? "The lab administrator still needs to activate email delivery."
-                : "The lab checks deadlines daily."}
-          </p>
-        </div>
       </fieldset>
       <div className="profile-account">
         <span>Google account</span>
-        <strong>
-          {person?.email ||
-            data.identity.email ||
-            "Imported account — email not connected"}
-        </strong>
-        <small>
-          Your email and access role are managed separately from your profile.
-        </small>
+        <strong>{person.email}</strong>
       </div>
       {error && (
         <p className="error" role="alert">
@@ -154,15 +74,117 @@ export function ProfileForm({
         </p>
       )}
       <div className="profile-actions">
-        <button
-          className="button primary"
-          disabled={busy || Boolean(data.preview)}
-        >
-          {data.preview
-            ? "Read-only preview"
-            : busy
-              ? "Saving…"
-              : "Save profile"}
+        <button className="button primary" disabled={busy}>
+          {busy ? "Saving…" : "Save account"}
+        </button>
+      </div>
+    </form>
+  );
+}
+export function SettingsForm({
+  data,
+  saved,
+}: {
+  data: Workspace;
+  saved: () => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+      reportingDay: data.settings.reportingDay,
+      reportingTime: data.settings.reportingTime,
+      timezone: data.settings.timezone,
+    }),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await mutate("/api/settings", form, "PATCH");
+      await saved();
+      setNotice("Reporting schedule saved.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const zones = [
+    ...new Set([form.timezone, "Asia/Kolkata", "Asia/Hong_Kong", "UTC"]),
+  ];
+  return (
+    <form className="panel profile-form" onSubmit={submit}>
+      <h2>Weekly reporting schedule</h2>
+      <p className="section-copy">
+        Set this once for the whole team. It controls reporting gaps and
+        reminder emails.
+      </p>
+      <fieldset disabled={busy} className="entry-fields">
+        <div className="form-grid">
+          <label>
+            Reporting day
+            <select
+              aria-label="Reporting day"
+              value={form.reportingDay}
+              onChange={(e) =>
+                setForm({ ...form, reportingDay: e.target.value })
+              }
+            >
+              {[
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+              ].map((d, i) => (
+                <option key={d} value={i + 1}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Reporting time
+            <input
+              required
+              type="time"
+              value={form.reportingTime}
+              onChange={(e) =>
+                setForm({ ...form, reportingTime: e.target.value })
+              }
+            />
+          </label>
+        </div>
+        <label>
+          Lab timezone
+          <select
+            aria-label="Lab timezone"
+            value={form.timezone}
+            onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+          >
+            {zones.map((z) => (
+              <option key={z}>{z}</option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="success" role="status">
+          {notice}
+        </p>
+      )}
+      <div className="profile-actions">
+        <button className="button primary" disabled={busy}>
+          {busy ? "Saving…" : "Save schedule"}
         </button>
       </div>
     </form>

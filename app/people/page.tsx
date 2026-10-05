@@ -1,9 +1,4 @@
-import { WorkspacePage } from "@/components/workspace-page";
-export const dynamic = "force-dynamic";
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ preview?: string }>;
-}) {
-  return <WorkspacePage screen="people" {...await searchParams} />;
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/projects");
 }

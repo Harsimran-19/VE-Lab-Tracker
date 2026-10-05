@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       to: identity.email,
       id: reminder.id,
       subject: "VE Lab · Gmail test",
-      text: `Hi ${identity.name},\n\nYour lab can send deadline reminders through Gmail. No purchased domain is needed.\n\nVenture Engineering Lab`,
+      text: `Hi ${identity.name},\n\nYour lab can send weekly update reminders, milestone reminders and manager summaries through Gmail. No purchased domain is needed.\n\nVenture Engineering Lab`,
     });
     await saveReminder({
       ...reminder,

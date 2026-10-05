@@ -1,302 +1,155 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  enrollGoogleAccount,
   googleMember,
+  enrollGoogleAccount,
   verifiedGoogleLogin,
 } from "../lib/enrollment";
-import { persistEntry, planEntry } from "../lib/entries";
-import { entrySchema } from "../lib/schema";
-import { AppError, resolveIdentity, workspaceFor } from "../lib/access";
-import type { Identity, Store } from "../lib/types";
-import seed from "../lib/seed.json";
-const empty = (): Store => ({
-  projects: [],
-  people: [],
-  assignments: [],
-  collaborators: [],
-  updates: [],
+import { planEntry, reportId } from "../lib/entries";
+import { latestReports } from "../lib/format";
+import { membershipId } from "../lib/membership";
+import { emptyStore } from "../lib/types";
+import { fixture, manager, member, now } from "./fixture";
+const input = () => ({
+  projectId: fixture().projects[0].id,
+  weekStart: "2026-10-05",
+  progress: "Completed pilot interviews",
+  nextPlan: "Code interview notes",
+  needsHelp: true,
+  blockers: "Need access to recordings",
 });
-const entryId = "a2352476-efb8-428a-af65-759243276458";
-const input = () =>
-  entrySchema.parse({
-    entryId,
-    newProjectName: "New lab project",
-    progress: "Built a prototype.",
-    status: "On track",
-  });
-
-test("only verified Google profiles can register; supplied roles and IDs are ignored", async () => {
-  const store = empty();
+test("only verified Google login registers; supplied identity and roles are ignored", async () => {
+  const store = emptyStore();
+  let calls = 0;
   const storage = {
-    read: async () => structuredClone(store),
-    add: async (p: Store["people"][number]) => {
-      store.people.push(p);
+    read: async () => store,
+    add: async (person: ReturnType<typeof googleMember>) => {
+      store.people.push(person);
+      calls++;
     },
   };
-  for (const profile of [
-    { email: "new@example.com", email_verified: false },
-    { email: "new@example.com", email_verified: "true" },
-    { email: "invalid", email_verified: true },
-  ])
-    assert.equal(
-      await enrollGoogleAccount("google", profile, [], storage),
-      false,
-    );
+  assert.equal(
+    verifiedGoogleLogin("google", {
+      email: "bad@example.com",
+      email_verified: false,
+    }),
+    null,
+  );
   assert.equal(
     await enrollGoogleAccount(
       "other",
-      { email: "new@example.com", email_verified: true },
+      { email: "a@example.com", email_verified: true },
       [],
       storage,
     ),
     false,
   );
-  assert.equal(store.people.length, 0);
   assert.equal(
     await enrollGoogleAccount(
       "google",
       {
-        email: " NEW@EXAMPLE.COM ",
+        email: " NEW@example.com ",
         email_verified: true,
-        name: "New person",
+        name: "New",
         role: "admin",
-        id: "harsimran",
+        id: "manager",
       },
       [],
       storage,
     ),
     true,
   );
-  assert.equal(store.people.length, 1);
-  assert.equal(store.people[0].role, "member");
   assert.equal(store.people[0].email, "new@example.com");
-  assert.notEqual(store.people[0].id, "harsimran");
+  assert.notEqual(store.people[0].id, "manager");
+  assert.equal(store.people[0].setupComplete, "false");
   await enrollGoogleAccount(
     "google",
-    {
-      email: "new@example.com",
-      email_verified: true,
-      name: "Changed display name",
-    },
+    { email: "new@example.com", email_verified: true },
     [],
     storage,
   );
-  assert.equal(store.people.length, 1);
-  assert.equal(store.people[0].name, "New person");
+  assert.equal(calls, 1);
 });
-test("existing Google accounts retain their workbook identity, assignments, and role", async () => {
-  const store = structuredClone(seed) as Store;
-  const existing = store.people.find((p) => p.id === "hars")!;
-  existing.email = "known@example.com";
-  existing.role = "admin";
-  let writes = 0;
+test("manager signup also creates a fresh real account without importing a roster", async () => {
+  const store = emptyStore();
   await enrollGoogleAccount(
     "google",
-    { email: existing.email, email_verified: true, name: "Someone else" },
-    [],
+    { email: manager.email, name: "Google name", email_verified: true },
+    [manager.email],
     {
       read: async () => store,
-      add: async () => {
-        writes++;
+      add: async (person) => {
+        store.people.push(person);
       },
     },
   );
-  assert.equal(writes, 0);
-  assert.equal(resolveIdentity(existing.email, "", store, []).personId, "hars");
-  assert.equal(resolveIdentity(existing.email, "", store, []).role, "admin");
-  const fresh = googleMember(
-    { email: "different@example.com", name: existing.name },
-    store,
-  );
-  assert.notEqual(fresh.id, existing.id);
-  assert.equal(fresh.role, "member");
+  assert.equal(store.people.length, 1);
+  assert.equal(store.people[0].name, "Google name");
+  assert.equal(store.people[0].setupComplete, "true");
+  assert.equal(store.projects.length, 0);
 });
-test("the configured admin can sign in before Sheets initialization", async () => {
-  const allowed = await enrollGoogleAccount(
-    "google",
-    { email: "owner@example.com", email_verified: true },
-    ["owner@example.com"],
+test("weekly reports derive authorship and preserve the first submission date on edits", () => {
+  const store = fixture(),
+    first = planEntry(store, member, input(), now);
+  assert.equal(first.personId, member.personId);
+  assert.equal(first.createdAt, now.toISOString());
+  store.updates = [first];
+  const edit = planEntry(
+    store,
+    member,
     {
-      read: async () => {
-        throw new Error("Not initialized");
-      },
-      add: async () => {
-        throw new Error("Do not write yet");
-      },
+      ...input(),
+      progress: "Finished coding",
+      needsHelp: false,
+      blockers: "Old problem",
     },
+    new Date("2026-10-06T04:00:00Z"),
   );
-  assert.equal(allowed, true);
+  assert.equal(edit.id, first.id);
+  assert.equal(edit.createdAt, first.createdAt);
+  assert.notEqual(edit.updatedAt, first.updatedAt);
+  assert.equal(edit.blockers, "");
+  assert.equal(edit.needsHelp, "false");
+  assert.equal(latestReports([first, edit])[0].id, edit.id);
+});
+test("a duplicate submission reuses the same report and timestamp", () => {
+  const store = fixture();
+  const report = planEntry(store, member, input(), now);
+  store.updates = [report];
+  assert.deepEqual(
+    planEntry(store, member, input(), new Date("2026-10-05T05:00:00Z")),
+    report,
+  );
   assert.equal(
-    verifiedGoogleLogin("google", {
-      email: "owner@example.com",
-      email_verified: false,
-    }),
-    null,
+    reportId(member.personId, store.projects[0].id, "2026-10-05"),
+    report.id,
+  );
+  assert.notEqual(
+    reportId(member.personId, store.projects[0].id, "2026-10-12"),
+    report.id,
   );
 });
-test("new members cannot create projects; administrators can create projects and report their own work", async () => {
-  const store = empty();
-  const person = googleMember(
-    { email: "new@example.com", name: "New member" },
-    store,
-  );
-  store.people.push(person);
-  const member = resolveIdentity(person.email, "", store, []);
-  assert.throws(
-    () => planEntry(store, member, input()),
-    (e: unknown) => e instanceof AppError && e.status === 403,
-  );
-  const identity: Identity = { ...member, role: "admin" };
-  const plan = planEntry(store, identity, input(), "2026-10-04T10:00:00Z");
-  assert.equal(identity.role, "admin");
-  assert.equal(plan.update.personId, person.id);
-  assert.equal(plan.assignment?.personId, person.id);
-  const order: string[] = [];
-  await persistEntry(plan, {
-    addProject: async (p) => {
-      order.push("project");
-      store.projects.push(p);
-    },
-    addAssignment: async (a) => {
-      order.push("work");
-      store.assignments.push(a);
-    },
-    addUpdate: async (u) => {
-      order.push("entry");
-      store.updates.push(u);
-    },
-  });
-  assert.deepEqual(order, ["project", "work", "entry"]);
-  assert.equal(store.projects[0].name, "New lab project");
-  const workspace = workspaceFor(store, identity, false, []);
-  assert.equal(workspace.projects.length, 1);
-  assert.equal(workspace.updates.length, 1);
+test("members and managers cannot report on work they have not joined", () => {
+  const store = fixture();
+  assert.throws(() => planEntry(store, manager, input(), now));
+  store.memberships = [];
+  assert.throws(() => planEntry(store, member, input(), now));
 });
-test("members can join an existing project while other people's assignments stay protected", () => {
-  const store = structuredClone(seed) as Store;
-  const identity: Identity = {
-    email: "new@example.com",
-    name: "New",
-    role: "member",
-    personId: "new-user",
-  };
-  const value = entrySchema.parse({
-    ...input(),
-    projectId: "P10",
-    newProjectName: "",
-  });
-  const plan = planEntry(store, identity, value);
-  assert.equal(plan.project, undefined);
-  assert.equal(plan.assignment?.projectId, "P10");
-  assert.equal(plan.update.personId, "new-user");
-  assert.throws(
-    () => planEntry(store, identity, { ...value, assignmentId: "A016" }),
-    (e: unknown) => e instanceof AppError && e.status === 403,
+test("completed projects stop reporting and clients cannot backdate a report", () => {
+  const store = fixture();
+  assert.throws(() =>
+    planEntry(store, member, { ...input(), weekStart: "2026-09-28" }, now),
   );
-  assert.throws(
-    () => planEntry(store, identity, { ...value, projectId: "missing" }),
-    (e: unknown) => e instanceof AppError && e.status === 404,
-  );
-  assert.equal(
-    entrySchema.safeParse({ ...value, personId: "hars" }).success,
-    false,
-  );
-  assert.equal(
-    entrySchema.safeParse({ ...value, role: "admin" }).success,
-    false,
-  );
-  assert.equal(
-    entrySchema.safeParse({ ...value, progress: " " }).success,
-    false,
-  );
-  assert.equal(
-    entrySchema.safeParse({ ...value, entryId: "arbitrary" }).success,
-    false,
-  );
+  store.projects[0].state = "completed";
+  assert.throws(() => planEntry(store, member, input(), now));
 });
-test("existing responsibilities are reused and cannot be moved to another project", () => {
-  const store = structuredClone(seed) as Store;
-  const identity: Identity = {
-    email: "hars@example.com",
-    name: "Hars",
-    role: "member",
-    personId: "hars",
-  };
-  const value = entrySchema.parse({
-    ...input(),
-    projectId: "P10",
-    newProjectName: "",
-  });
-  const plan = planEntry(store, identity, value);
-  assert.equal(plan.assignment, undefined);
-  assert.equal(plan.update.assignmentId, "A016");
-  assert.throws(
-    () =>
-      planEntry(store, identity, {
-        ...value,
-        projectId: "P01",
-        assignmentId: "A016",
-      }),
-    AppError,
-  );
-});
-test("retries recover a partial Sheets write and do not duplicate the saved entry", async () => {
-  const store = empty();
-  const identity: Identity = {
-    email: "new@example.com",
-    name: "New",
-    role: "admin",
-    personId: "new-user",
-  };
-  let fail = true;
-  const storage = {
-    addProject: async (p: Store["projects"][number]) => {
-      store.projects.push(p);
-    },
-    addAssignment: async (a: Store["assignments"][number]) => {
-      store.assignments.push(a);
-    },
-    addUpdate: async (u: Store["updates"][number]) => {
-      if (fail) throw new Error("Sheet unavailable");
-      store.updates.push(u);
-    },
-  };
-  await assert.rejects(
-    persistEntry(planEntry(store, identity, input()), storage),
-  );
-  assert.equal(store.projects.length, 1);
-  assert.equal(store.assignments.length, 1);
-  fail = false;
-  await persistEntry(planEntry(store, identity, input()), storage);
-  await persistEntry(planEntry(store, identity, input()), storage);
-  assert.equal(store.projects.length, 1);
-  assert.equal(store.assignments.length, 1);
-  assert.equal(store.updates.length, 1);
-  assert.throws(
-    () => planEntry(store, { ...identity, personId: "someone-else" }, input()),
-    (e: unknown) => e instanceof AppError && e.status === 403,
-  );
-});
-test("new members can browse shared projects and expertise before joining", () => {
-  const store = structuredClone(seed) as Store;
-  const identity: Identity = {
-    email: "new@example.com",
-    name: "New",
-    role: "member",
-    personId: "new-user",
-  };
-  const workspace = workspaceFor(store, identity, false, []);
-  assert.equal(workspace.projects.length, 15);
+test("membership IDs isolate people and prevent duplicate joining records", () => {
   assert.equal(
-    workspace.assignments.filter((a) => a.personId === identity.personId)
-      .length,
-    0,
+    membershipId("member", "project"),
+    membershipId("member", "project"),
   );
-  assert.equal(workspace.people.length, store.people.length);
-  assert.equal(workspace.availableProjects.length, 15);
-  assert.deepEqual(Object.keys(workspace.availableProjects[0]).sort(), [
-    "id",
-    "name",
-  ]);
+  assert.notEqual(
+    membershipId("manager", "project"),
+    membershipId("member", "project"),
+  );
 });

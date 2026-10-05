@@ -25,9 +25,11 @@ Below, **“Add a variable” means enter its exact name and value in your chose
 
 If you do not have a Vercel project yet, the application code must first be pushed to `Harsimran-19/VE-Lab-Tracker`, then imported into Vercel as a Next.js project. An initial deployment can show the setup screen until you finish these steps.
 
-For cloud sample testing, keep `NEXTAUTH_URL=http://localhost:3000` and `DEMO_MODE=true`. That runs sample data; it does not provide a public browser URL or real Google login.
+For cloud sample testing, keep `NEXTAUTH_URL=http://localhost:3000` and `DEMO_MODE=true`. That runs an empty local test workspace; it does not provide a public browser URL or real Google login.
 
 ## Step 2 — Create a new Google Sheet
+
+**Already connected a Sheet?** Keep its `GOOGLE_SHEET_ID` and skip creating a new one. The app will use separate, empty Lab tabs in that spreadsheet.
 
 1. Open [Google Sheets](https://sheets.google.com) and create a **blank spreadsheet**.
 2. Name it **VE Lab Tracker — App**. Leave its blank tab alone.
@@ -45,7 +47,7 @@ https://docs.google.com/spreadsheets/d/1FICTIONAL_SHEET_ID_ABC123/edit
 | -------------------------------------------- | ----------------- | ---------------------------- |
 | The Sheet address, between `/d/` and `/edit` | `GOOGLE_SHEET_ID` | `1FICTIONAL_SHEET_ID_ABC123` |
 
-Use your actual ID, not this example. Keep the Sheet open for Step 4. Your original workbook stays unchanged; the app imports its projects later.
+Use your actual ID, not this example. Keep the Sheet open for Step 4. The app starts fresh in separate Lab tabs; it does not import old projects or people.
 
 ## Step 3 — Enable Google's Sheet connection
 
@@ -144,35 +146,32 @@ openssl rand -base64 32
 
 Paste only that output line, not the command. This requires no local file creation. Keep the output private.
 
-## Step 7 — Save, restart, and initialize
+## Step 7 — Sign in and start a fresh lab
 
-You should now have all nine variables:
+| Variable                       | Value to copy from                |
+| ------------------------------ | --------------------------------- |
+| `NEXTAUTH_URL`                 | Step 1: your exact website URL    |
+| `ADMIN_EMAILS`                 | Step 1: your manager Google email |
+| `GOOGLE_SHEET_ID`              | Step 2: spreadsheet ID            |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Step 4: JSON `client_email`       |
+| `GOOGLE_PRIVATE_KEY`           | Step 4: entire JSON `private_key` |
+| `GOOGLE_CLIENT_ID`             | Step 5: OAuth Client ID           |
+| `GOOGLE_CLIENT_SECRET`         | Step 5: OAuth Client secret       |
+| `NEXTAUTH_SECRET`              | Step 6: random output line        |
 
-| Variable                       | You obtained it in               |
-| ------------------------------ | -------------------------------- |
-| `NEXTAUTH_URL`                 | Step 1: app URL                  |
-| `ADMIN_EMAILS`                 | Step 1: your admin email         |
-| `DEMO_MODE`                    | Step 1: `false` for the real app |
-| `GOOGLE_SHEET_ID`              | Step 2: Sheet URL                |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Step 4: JSON `client_email`      |
-| `GOOGLE_PRIVATE_KEY`           | Step 4: JSON `private_key`       |
-| `GOOGLE_CLIENT_ID`             | Step 5: OAuth Client ID          |
-| `GOOGLE_CLIENT_SECRET`         | Step 5: OAuth Client secret      |
-| `NEXTAUTH_SECRET`              | Step 6: generated random line    |
+1. Save the variables in Vercel and **redeploy**.
+2. Sign in as `harsimran1869@gmail.com` (or your configured manager email).
+3. The lab starts empty. Click **Create project** and enter only its **Project name** and **Goal**.
+4. Click **Share website** and send the link to your team. Publish the Google OAuth audience **In production** before inviting members; during initial testing, add them under Google's **Test users**.
+5. Members sign in with Google, confirm their name, and choose their projects. No roster selection, account approval or manual registration is needed.
+6. A member clicks **Write update**, enters accomplishments and next step, and checks **I need help** only when relevant. Their name, date and week are automatic.
+7. Saving again edits that member's current-week report. Earlier weeks remain available in the project; nobody edits another member's report.
+8. The manager sees reporting gaps and help requests on **Lab overview**. Research phase and milestone changes happen inside the relevant project.
+9. Under **Account & settings**, set the reporting day, time and lab timezone once. Defaults: Friday, 18:00, Asia/Kolkata.
 
-1. **Vercel:** save the variables, then **redeploy** your project.
-2. Open your app URL from Step 1 and sign in as `harsimran1869@gmail.com`.
-3. Click **Initialize lab spreadsheet** once. It fills the new Sheet with the workbook's projects and responsibilities; real reports start empty.
-4. In Google Cloud, open **Google Auth Platform → Audience → Publish app** and confirm **In production** before inviting the lab. If Google blocks a test account before publication, add it under **Audience → Test users**.
-5. On **Lab overview**, click **Invite the lab** and share the website. Members sign in with their own Google account.
-6. Test another Google account in a private browser window. The welcome screen asks for **Your name**, then **Your projects**. Select a project and click **Open my workspace**.
-7. On **My work**, click **Write update**. Write progress, choose a status, and **Publish update**. The report appears in the Sheet’s **Updates** tab and the project’s **Weekly progress**.
-8. **My profile** is always visible in navigation. Add expertise and reminder preferences. **Teammates** lets people find collaborators.
-9. A member already listed in the spreadsheet can select **Existing lab name** during welcome. Their account works immediately. The admin confirms the previous-history connection under **Teammates → Connect existing lab profiles**; selecting a name alone never grants another person’s identity or admin role.
+The app automatically creates six clean tabs: **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries**. They start empty except for actual Google signups and the reporting schedule. Old tracker tabs, names, projects and reports are never imported or displayed. Use a new blank spreadsheet from Step 2 if desired; an already connected workbook can also host these separate fresh tabs without changing its old data. There is no initialization or reset button to click.
 
-**Already using the app?** Keep the current Sheet and its records. Do not initialize it again. Optional `Profiles`, `Onboarding`, and `Reminders` tabs are created automatically when needed. Existing members complete the welcome steps once; their existing Google email and reports remain attached to them.
-
-For cloud settings, review/save the changes and publish the environment configuration; I can then restart and check the connection here. Actual Google browser login still needs a reachable app URL with the matching redirect URI.
+<a id="gmail-reminders"></a>
 
 ## Step 8 — Free Gmail reminders (no purchased domain)
 
@@ -219,19 +218,26 @@ Keep it separate from `NEXTAUTH_SECRET`. Vercel automatically includes this secr
 
 ### 8D. Set the timezone, redeploy and test
 
-1. Create `LAB_TIMEZONE` with value **`Asia/Kolkata`** (or **`Asia/Hong_Kong`** if that is the lab’s timezone).
+1. Under **Account & settings**, choose the weekly reporting day, time and lab timezone. No timezone ENV variable is needed.
 2. Save the variables and **redeploy** in Vercel.
-3. Sign in as the admin, open **My profile → Lab email reminders**, and click **Send me a test email**.
+3. Sign in as the admin, open **Account & settings → Lab email reminders**, and click **Send me a test email**.
 4. Check your Google inbox and spam folder. The app confirms Gmail acceptance, which does not by itself prove inbox delivery. Sample mode only previews the message.
-5. For a real deadline test, join a project yourself. Under **Manage project**, set a milestone due tomorrow. Keep **My profile → Send me deadline reminders** checked.
+5. For a real deadline test, join a project yourself. Inside the project, click **Set milestone** and choose tomorrow as the due date. Keep **Account → Email me relevant reminders** checked.
 6. In Vercel → **Cron Jobs**, confirm `/api/cron/reminders` appears. Use its **Run** control, if available, or wait for the next daily run. The schedule is **04:00 UTC** (09:30 India / 12:00 Hong Kong); Hobby execution can occur within that hour.
-7. Confirm the deadline email arrives and a `Reminders` row has `sentAt` filled in your Sheet.
+7. Confirm the deadline email arrives and a `LabDeliveries` row has `sentAt` filled in your Sheet.
 
-Each active deadline gets one upcoming reminder within three days, one on its due date, and one overdue reminder within seven days after. Completed work and opted-out members are excluded. This uses ordinary Gmail sending limits, suitable for a small team.
+Email policy:
+
+- **Weekly update reminder:** one email per member and week, combining only outstanding updates, in the 24-hour window before the reporting cutoff.
+- **Milestone reminder:** one the day before and one on the due date, only for members of that active project.
+- **Weekly manager summary:** one after the cutoff, listing reporting gaps and unresolved help requests. With daily scheduling, this arrives on the first scheduled run after the deadline.
+- **Completed projects** stop report expectations and reminders. Members who join after the weekly cutoff start being counted next week. Account preferences can disable emails.
+
+Gmail sending limits apply; this is intended for the small team. Daily cron is suitable for these reminder windows; it does not promise delivery at the exact reporting cutoff time.
 
 **If a send is uncertain:** Gmail SMTP cannot guarantee duplicate suppression. The app reserves a Sheet row before sending and holds unconfirmed rows instead of resending automatically. An admin should check the sender’s Gmail mail history and the recipient before resolving the row. If accepted, fill `sentAt` and `providerId` (the message ID); delete only that specific pending row if you have confirmed it was not accepted and want another attempt. Never delete the whole tab or reinitialize the Sheet. Concurrent scheduler runs should be avoided because Sheets has no transaction lock.
 
-Old `RESEND_API_KEY` and `EMAIL_FROM` settings are no longer used and can be removed. Automated tests mock Gmail; real delivery and Vercel scheduling require the configuration above.
+Old `RESEND_API_KEY`, `EMAIL_FROM` and `LAB_TIMEZONE` settings are unused. Automated tests mock Gmail; real delivery and Vercel scheduling require the configuration above.
 
 ## Complete fictional ENV example
 
@@ -255,7 +261,6 @@ NEXTAUTH_SECRET=FICTIONAL_SESSION_SECRET_REPLACE_WITH_GENERATED_VALUE
 GMAIL_USER=fictional-sender@gmail.com
 GMAIL_APP_PASSWORD=FICTIONAL_APP_PASSWORD_NOT_VALID
 CRON_SECRET=FICTIONAL_CRON_SECRET_REPLACE_WITH_64_RANDOM_HEX_CHARACTERS
-LAB_TIMEZONE=Asia/Kolkata
 ```
 
 The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering the key in Vercel or cloud settings, omit the surrounding quotes; actual line breaks and literal `\n` escapes are both supported.
@@ -269,6 +274,5 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | App cannot edit the Sheet            | Step 3: enable Sheets API; Step 4: share the Sheet with `client_email` as Editor                            |
 | Spreadsheet not found                | Step 2: copy only the ID; Step 4: check sharing                                                             |
 | Invalid private key                  | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines                        |
-| Original workbook attached directly  | Step 2: use a new blank Sheet, then initialize it in Step 7                                                 |
-| Existing app Sheet / changed headers | Restore the expected headers from `lib/sheets.ts`. Keep the current Sheet and records; do not reinitialize  |
+| Existing app Sheet / changed headers | Restore the six Lab tab headers from `lib/sheets.ts`; never overwrite existing records                      |
 | Deadline emails not arriving         | Step 8: Gmail address + app password + cron secret, redeploy, test email, then Cron Jobs                    |

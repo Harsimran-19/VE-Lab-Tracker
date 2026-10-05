@@ -1,21 +1,40 @@
 # VE Lab Tracker
 
-A research workspace for Venture Engineering Lab’s projects, students, RAs, postdocs and PhDs. It runs on Vercel, uses Google sign-in and stores all persistent application data in Google Sheets.
+A simple weekly research tracker for one Venture Engineering Lab team. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Gmail sends reminders without a purchased domain.
 
-## Product flow
+## Workflow
 
-Google sign-in → Choose your name → Choose your projects → My work → Share weekly progress.
+Manager: sign in → create a project with its name and goal → share the website → review weekly progress, missing updates, help requests and deadlines.
 
-- **Home:** members’ work, updates to share and deadlines. Administrators see lab progress, reporting gaps and blockers.
-- **Projects:** searchable research directory and self-service membership. Administrators create projects and set phases, milestones and due dates.
-- **Project workspace:** research phase, milestone, team responsibilities, external collaborators and everyone’s weekly updates. Updates record progress, status, blockers and next week’s plan with automatic author/date. History and member filtering support performance reviews.
-- **Teammates:** find collaborators through expertise, position, interests and project involvement.
-- **My profile:** name, affiliation, position, expertise, research interests and deadline email preference; always visible in navigation.
-- **Deadline emails:** daily Vercel scheduler, Gmail SMTP delivery and Google Sheets delivery ledger. One upcoming, due-date and overdue reminder per deadline. Completed responsibilities and opted-out members are excluded.
+Member: Google sign-in → confirm name → choose projects → My work → report accomplishments and next step. “I need help” reveals a required blocker explanation. Saving again edits the same current-week report.
 
-Accounts are created automatically with Member access. No routine admin registration or assignment is needed. The welcome flow asks members to choose their name and projects. Matching Google emails retain their workbook identity. A blank-email imported name can be selected to request its previous history; the admin confirms the connection before history is moved to the new Google account. `harsimran1869@gmail.com` is the designated test administrator. Administrator corrections and read-only member previews live in Teammates.
+- **Home:** manager lab overview or the member's own work.
+- **Projects:** discover and join active projects, read shared reports, or review completed projects.
+- **Project page:** latest reports and real members. Managers change research phase, set a milestone and date, or complete/reopen the project. Earlier weeks are available when history exists.
+- **Account:** name and email preference. Managers also set the reporting day, time and timezone and test their own Gmail delivery.
 
-## Start locally
+Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. There are no publication fields, affiliation/biography forms, imported people, roster linking, responsibility assignment or people-management page. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+
+## Fresh Google Sheets data
+
+The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries** automatically when needed. Old tracker tabs are neither read nor imported; production starts with zero projects and only actual Google signups. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate clean tabs without altering its old records. No initialization/reset step is needed.
+
+Google signup requires a verified email. Manager permissions come from `ADMIN_EMAILS`; users cannot choose their role. `harsimran1869@gmail.com` is the designated test manager. Google login requests only `openid`, `email`, `profile`; the service account writes to Sheets. Writes use RAW values. Delivery logs stay server-side.
+
+One deterministic report ID per person/project/week prevents duplicate logical reports on retries. Current-week reports can be edited; past weeks cannot be backdated by the client. Membership IDs are stable. Sheets has no transactions: concurrent edits to the same report may overwrite one another. Last rows with matching IDs are the logical record.
+
+## Email policy
+
+- Outstanding weekly updates: one combined reminder per member/week during the 24 hours before the cutoff.
+- Project milestones: one reminder the day before and one on the due date.
+- Managers: one weekly summary after the reporting cutoff, including missing reports and unresolved help.
+- Completed projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week.
+
+`vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
+
+Gmail requires `GMAIL_USER` and a Google-generated `GMAIL_APP_PASSWORD`. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
+
+## Development and verification
 
 ```bash
 npm ci
@@ -23,35 +42,17 @@ cp .env.example .env.local
 npm run dev
 ```
 
-For credential-free development, set `DEMO_MODE=true`. Use Member view, New member view and Admin view to test the flow. Sample reports are labeled; in-memory data resets on server restart. Email sending is disabled. Demo authentication is unavailable in production or whenever `VERCEL` is set.
-
-For real Google and email connections, use the exact copy/paste steps in [the setup guide](docs/GOOGLE_SETUP.md). Credentials belong in ignored `.env.local` or private environment settings. Cloud and Vercel variables are separate; configuring one does not configure the other. [fictional.env](docs/fictional.env) demonstrates formatting with invalid example values.
-
-## Google Sheets
-
-A new blank Sheet is initialized once with 15 projects and 21 responsibilities from the supplied workbook. Real weekly updates start empty. Required tabs: `Projects`, `People`, `Assignments`, `Collaborators`, `Updates`. Optional `Profiles`, `Onboarding` and `Reminders` tabs are added on first use; existing normalized app Sheets remain compatible. Do not reinitialize an existing app Sheet or overwrite the source workbook.
-
-Server-side reads and writes use the service account; user login requests only `openid`, `email`, `profile`. Text uses Sheets `RAW` input so it cannot become a formula. All signed-in lab members can read the shared research directory, profiles and team updates. They can write only their own profile, membership and progress. Only administrators can manage projects, accounts and responsibilities. Email delivery records stay server-side; the admin receives counts only.
-
-Google Sheets has quotas and no transactions. The app is intended for the small lab: simultaneous edits to the same record can overwrite each other. Stable membership and signup IDs converge after concurrent appends; report retries reuse submission IDs. Reminder records are reserved before sending, without SMTP idempotency. Any unconfirmed delivery is held for review instead of automatically resending; see the setup guide.
-
-Weeks start Monday in `LAB_TIMEZONE` (default `Asia/Kolkata`), independent of the server’s timezone. Reporting gaps indicate missing updates this week, not grades or automatic performance scores. Research stage is independent of weekly progress status.
-
-## Verify
+Do not copy the example over an existing private ENV file. Set `DEMO_MODE=true` for credential-free local testing: the test workspace starts empty, and you create its projects. The development-only switch lets you try a new member. In-memory test data resets on restart; sample emails are simulated. Demo authentication is unavailable in production or on Vercel.
 
 ```bash
 npm test
-npm run typecheck
 npm run build
+npm run typecheck
 npm run test:e2e
 ```
 
-Browser checks run sample mode on port 3100 and production on 3101. Stop any development server from this checkout first; Next.js permits one dev process per checkout. Chromium uses `/usr/bin/chromium` where available; otherwise run `npx playwright install chromium`. The production build is required before browser tests.
+Stop this checkout's dev server before browser tests, which start dev on 3100 and production on 3101. Chromium uses `/usr/bin/chromium` if present; otherwise install the Playwright browser. Tests verify real browser journeys, authorization, report editing, fresh Sheets contracts, local cutoff rules and mocked Gmail. Actual Google consent, Sheets permissions, inbox delivery and Vercel cron need deployment credentials.
 
-Tests cover actual UI journeys, shared visibility, write authorization, identity spoofing, Sheet contracts/migration, timezone boundaries, email preferences and retry handling. Google and email services are mocked in unit tests. Actual OAuth consent, Sheet permissions, Gmail delivery and scheduled Vercel execution require deployment credentials.
+## Deployment
 
-## Deploy
-
-Import this repository into Vercel as Next.js. Add the private variables from `.env.example`, set `DEMO_MODE=false`, configure Google’s matching callback URI, and redeploy. Email uses an existing Gmail account with `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and a separate strong `CRON_SECRET`. No purchased domain is needed. Admins can test sending in My profile. `vercel.json` registers one daily reminder run at 04:00 UTC, compatible with Vercel’s daily Hobby scheduling. Arbitrary preview deployment URLs do not automatically work with Google OAuth.
-
-The user handles deployment. Full instructions, including fictional values and exactly where each value goes, are in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
+The user handles Vercel deployment. Set the private variables from `.env.example`, configure the matching Google callback, set `DEMO_MODE=false`, and redeploy. Credentials belong in private Vercel/cloud settings or ignored `.env.local`; never in Git or chat. Cloud and Vercel configuration are separate. [fictional.env](docs/fictional.env) demonstrates invalid example values.

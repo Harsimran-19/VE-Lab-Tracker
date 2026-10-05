@@ -1,191 +1,67 @@
 import "server-only";
-import seed from "./seed.json";
 import { isDemo } from "./config";
-import {
-  appendSheet,
-  initializeSheet,
-  readSheet,
-  replaceSheet,
-  upsertProfile,
-  upsertExtra,
-  ensureExtraTable,
-} from "./sheets";
+import { readSheet, upsertSheet } from "./sheets";
+import { emptyStore } from "./types";
 import type {
-  Onboarding,
-  Assignment,
-  Person,
-  Profile,
   Project,
+  Person,
+  Membership,
+  Update,
+  Settings,
   Reminder,
   Store,
-  Update,
 } from "./types";
-
-const globals = globalThis as unknown as { veLabDemo?: Store };
-function demoStore(): Store {
-  if (!globals.veLabDemo) {
-    globals.veLabDemo = structuredClone(seed) as Store;
-    globals.veLabDemo.profiles = [];
-    globals.veLabDemo.onboarding = [
-      {
-        id: "hars",
-        completedAt: new Date().toISOString(),
-        rosterId: "hars",
-        status: "linked",
-        requesterEmail: "hars@demo.invalid",
-      },
-    ];
-    globals.veLabDemo.reminders = [];
-    const now = Date.now();
-    const examples = [
-      {
-        personId: "hars",
-        assignmentId: "A016",
-        projectId: "P10",
-        progress:
-          "Sample: evaluated the first LLM extraction prompt against the pilot dataset.",
-        blockers: "Sample: need access to the remaining source documents.",
-        nextPlan: "Sample: compare results with the baseline.",
-        status: "Blocked",
-      },
-      {
-        personId: "lin",
-        assignmentId: "A004",
-        projectId: "P04",
-        progress: "Sample: finished coding the next batch of field notes.",
-        blockers: "",
-        nextPlan: "Sample: review the coding with Jin.",
-        status: "On track",
-      },
-      {
-        personId: "serena",
-        assignmentId: "A007",
-        projectId: "P06",
-        progress: "Sample: organized the literature review into three themes.",
-        blockers: "",
-        nextPlan: "",
-        status: "On track",
-      },
-    ];
-    globals.veLabDemo.updates = examples.map((u, i) => ({
-      ...u,
-      id: `sample-${i}`,
-      createdAt: new Date(now - (i + 1) * 86400000).toISOString(),
-    }));
-  }
-  return globals.veLabDemo;
+const globals = globalThis as unknown as { veLabFreshDemo?: Store };
+function demoStore() {
+  return (globals.veLabFreshDemo ??= emptyStore());
 }
 export async function readStore(): Promise<Store> {
   return isDemo() ? structuredClone(demoStore()) : readSheet();
 }
-export async function addUpdate(update: Update) {
-  if (isDemo()) {
-    demoStore().updates.push(update);
-    return;
-  }
-  return appendSheet("Updates", update);
-}
-export async function addProject(project: Project) {
-  if (isDemo()) {
-    demoStore().projects.push(project);
-    return;
-  }
-  return appendSheet("Projects", project);
-}
-export async function saveProject(project: Project) {
-  if (isDemo()) {
-    demoStore().projects = demoStore().projects.map((p) =>
-      p.id === project.id ? project : p,
-    );
-    return;
-  }
-  return replaceSheet("Projects", project);
+function upsert<T extends { id: string }>(rows: T[], record: T) {
+  return [...rows.filter((r) => r.id !== record.id), record];
 }
 export async function savePerson(person: Person) {
   if (isDemo()) {
-    demoStore().people = demoStore().people.map((p) =>
-      p.id === person.id ? person : p,
-    );
+    demoStore().people = upsert(demoStore().people, person);
     return;
   }
-  return replaceSheet("People", person);
+  return upsertSheet("LabMembers", person);
 }
-export async function addPerson(person: Person) {
+export const addPerson = savePerson;
+export async function saveProject(project: Project) {
   if (isDemo()) {
-    demoStore().people.push(person);
+    demoStore().projects = upsert(demoStore().projects, project);
     return;
   }
-  return appendSheet("People", person);
+  return upsertSheet("LabProjects", project);
 }
-export async function saveAssignment(
-  assignment: Assignment,
-  exists: boolean,
-  reconcileDuplicates = false,
-) {
+export async function saveMembership(membership: Membership) {
   if (isDemo()) {
-    if (exists)
-      demoStore().assignments = demoStore().assignments.map((a) =>
-        a.id === assignment.id ? assignment : a,
-      );
-    else if (!demoStore().assignments.some((a) => a.id === assignment.id))
-      demoStore().assignments.push(assignment);
+    demoStore().memberships = upsert(demoStore().memberships, membership);
     return;
   }
-  return exists
-    ? replaceSheet("Assignments", assignment, reconcileDuplicates)
-    : appendSheet("Assignments", assignment);
-}
-export async function initializeStore() {
-  return isDemo()
-    ? readStore()
-    : initializeSheet(structuredClone(seed) as Store);
-}
-export async function saveProfile(profile: Profile) {
-  if (isDemo()) {
-    const store = demoStore();
-    store.profiles = [
-      ...(store.profiles ?? []).filter((p) => p.id !== profile.id),
-      profile,
-    ];
-    return;
-  }
-  return upsertProfile(profile);
-}
-export async function addReminder(reminder: Reminder) {
-  if (isDemo()) {
-    demoStore().reminders!.push(reminder);
-    return;
-  }
-  await ensureExtraTable("Reminders");
-  return appendSheet("Reminders", reminder);
-}
-export async function saveReminder(reminder: Reminder) {
-  if (isDemo()) {
-    demoStore().reminders = demoStore().reminders!.map((r) =>
-      r.id === reminder.id ? reminder : r,
-    );
-    return;
-  }
-  return replaceSheet("Reminders", reminder);
-}
-
-export async function saveOnboarding(record: Onboarding) {
-  if (isDemo()) {
-    const s = demoStore();
-    s.onboarding = [
-      ...(s.onboarding ?? []).filter((v) => v.id !== record.id),
-      record,
-    ];
-    return;
-  }
-  return upsertExtra("Onboarding", record);
+  return upsertSheet("LabMemberships", membership);
 }
 export async function saveUpdate(update: Update) {
   if (isDemo()) {
-    demoStore().updates = demoStore().updates.map((u) =>
-      u.id === update.id ? update : u,
-    );
+    demoStore().updates = upsert(demoStore().updates, update);
     return;
   }
-  return replaceSheet("Updates", update, true);
+  return upsertSheet("LabReports", update);
 }
+export async function saveSettings(settings: Settings) {
+  if (isDemo()) {
+    demoStore().settings = settings;
+    return;
+  }
+  return upsertSheet("LabSettings", settings);
+}
+export async function addReminder(reminder: Reminder) {
+  if (isDemo()) {
+    demoStore().reminders = upsert(demoStore().reminders, reminder);
+    return;
+  }
+  return upsertSheet("LabDeliveries", reminder);
+}
+export const saveReminder = addReminder;

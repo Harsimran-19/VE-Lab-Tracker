@@ -1,223 +1,252 @@
 import test, { mock } from "node:test";
+import assert from "node:assert/strict";
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import { gmailConfiguration, sendGmail } from "../lib/mail";
-import assert from "node:assert/strict";
-import {
-  deliverReminders,
-  planReminders,
-  reminderMessage,
-  requireCron,
-} from "../lib/reminders";
-import { dateInZone, reportedThisWeek, startOfWeek } from "../lib/calendar";
-import { profileSchema } from "../lib/schema";
-import { membershipId } from "../lib/membership";
 import { AppError } from "../lib/access";
-import seed from "../lib/seed.json";
-import type { Store, Reminder } from "../lib/types";
-const now = new Date("2026-10-05T04:00:00Z");
-function fixture(): Store {
-  const store = structuredClone(seed) as Store;
-  store.people.find((p) => p.id === "hars")!.email = "member@example.com";
-  store.projects.find((p) => p.id === "P10")!.due = "2026-10-08";
-  store.projects.find((p) => p.id === "P10")!.milestone =
-    "Finish pilot analysis";
-  store.reminders = [];
-  store.profiles = [];
-  return store;
-}
-test("weekly reporting follows the configured local week at UTC boundaries", () => {
-  assert.equal(dateInZone(new Date("2026-10-04T19:00:00Z")), "2026-10-05");
-  assert.equal(startOfWeek("2026-10-05"), "2026-10-05");
-  assert.equal(startOfWeek("2026-10-11"), "2026-10-05");
+import { planReminders, deliverReminders, requireCron } from "../lib/reminders";
+import {
+  dateInZone,
+  startOfWeek,
+  reportingDeadline,
+  expectedThisWeek,
+} from "../lib/calendar";
+import { planEntry } from "../lib/entries";
+import { fixture, now, member, manager } from "./fixture";
+import type { Reminder } from "../lib/types";
+
+test("weekly dates and cutoffs use the lab timezone, including UTC boundaries", () => {
   assert.equal(
-    reportedThisWeek("2026-10-04T18:29:59Z", "2026-10-05", "Asia/Kolkata"),
-    false,
+    dateInZone(new Date("2026-10-04T18:30:00Z"), "Asia/Kolkata"),
+    "2026-10-05",
+  );
+  assert.equal(startOfWeek("2026-10-11"), "2026-10-05");
+  const s = fixture();
+  assert.deepEqual(
+    reportingDeadline(s.settings, new Date("2026-10-09T12:29:00Z")),
+    { date: "2026-10-09", time: "18:00", passed: false },
   );
   assert.equal(
-    reportedThisWeek("2026-10-04T18:30:00Z", "2026-10-05", "Asia/Kolkata"),
+    reportingDeadline(s.settings, new Date("2026-10-09T12:30:00Z")).passed,
     true,
   );
+});
+test("members joining after the cutoff are not marked missing until next week", () => {
+  const s = fixture();
+  s.memberships[0].joinedAt = "2026-10-09T13:00:00Z";
   assert.equal(
-    reportedThisWeek("2026-10-12T00:00:00Z", "2026-10-05", "Asia/Kolkata"),
+    expectedThisWeek(s.memberships[0], s, new Date("2026-10-10T04:00:00Z")),
     false,
   );
+  assert.equal(
+    expectedThisWeek(s.memberships[0], s, new Date("2026-10-12T04:00:00Z")),
+    true,
+  );
 });
-test("reminders reach project members for upcoming, due and overdue deadlines", () => {
-  const store = fixture();
-  const items = planReminders(store, now);
+test("weekly reminders combine only a member’s outstanding updates before the cutoff", () => {
+  const s = fixture();
+  s.projects[0].due = "";
+  assert.equal(planReminders(s, now, [manager.email]).length, 0);
+  let items = planReminders(
+    s,
+    new Date("2026-10-09T04:00:00Z"),
+    [manager.email],
+    "https://lab.example.com",
+  );
   assert.equal(items.length, 1);
-  assert.equal(items[0].email, "member@example.com");
-  assert.equal(items[0].reminder.phase, "upcoming");
+  assert.equal(items[0].email, member.email);
+  assert.equal(items[0].reminder.phase, "weekly-update");
+  assert.ok(items[0].text.includes(s.projects[0].name));
+  s.updates = [
+    planEntry(
+      s,
+      member,
+      {
+        projectId: s.projects[0].id,
+        weekStart: "2026-10-05",
+        progress: "Done interviews",
+        nextPlan: "Code notes",
+        needsHelp: false,
+        blockers: "",
+      },
+      now,
+    ),
+  ];
   assert.equal(
-    planReminders(store, new Date("2026-10-08T04:00:00Z"))[0].reminder.phase,
-    "due",
-  );
-  assert.equal(
-    planReminders(store, new Date("2026-10-09T04:00:00Z"))[0].reminder.phase,
-    "overdue",
-  );
-  assert.equal(
-    planReminders(store, new Date("2026-10-16T04:00:00Z")).length,
+    planReminders(s, new Date("2026-10-09T04:00:00Z"), [manager.email]).length,
     0,
   );
-  const message = reminderMessage(items[0], "https://lab.example.com");
-  assert.ok(message.text.includes("Finish pilot analysis"));
-  assert.ok(message.text.includes("https://lab.example.com/projects/P10"));
-  assert.ok(message.text.includes("/profile"));
 });
-test("preferences, completed work, sample addresses and sent phases suppress emails", () => {
-  const store = fixture();
-  const item = planReminders(store, now)[0];
-  store.reminders = [
-    { ...item.reminder, sentAt: now.toISOString(), providerId: "email-1" },
+test("changing the reporting schedule does not resend an accepted weekly email", () => {
+  const s = fixture();
+  s.projects[0].due = "";
+  const friday = new Date("2026-10-09T04:00:00Z");
+  const reminder = planReminders(s, friday, [manager.email])[0];
+  s.reminders.push({
+    ...reminder.reminder,
+    sentAt: friday.toISOString(),
+    providerId: "accepted",
+  });
+  s.settings.reportingTime = "19:00";
+  s.settings.timezone = "Asia/Hong_Kong";
+  assert.equal(planReminders(s, friday, [manager.email]).length, 0);
+  const saturday = new Date("2026-10-10T04:00:00Z");
+  const summary = planReminders(s, saturday, [manager.email])[0];
+  s.reminders.push({
+    ...summary.reminder,
+    sentAt: saturday.toISOString(),
+    providerId: "accepted",
+  });
+  s.settings.reportingTime = "20:00";
+  assert.equal(planReminders(s, saturday, [manager.email]).length, 0);
+});
+test("manager summary follows the cutoff and includes missing updates and unresolved help", () => {
+  const s = fixture();
+  s.projects[0].due = "";
+  const items = planReminders(s, new Date("2026-10-10T04:00:00Z"), [
+    manager.email,
+  ]);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].email, manager.email);
+  assert.equal(items[0].reminder.phase, "weekly-summary");
+  assert.ok(items[0].text.includes("missing: Member"));
+  s.updates = [
+    planEntry(
+      s,
+      member,
+      {
+        projectId: s.projects[0].id,
+        weekStart: "2026-10-05",
+        progress: "Did interviews",
+        nextPlan: "Code",
+        needsHelp: true,
+        blockers: "Need recordings",
+      },
+      now,
+    ),
   ];
-  assert.equal(planReminders(store, now).length, 0);
-  // The same upcoming phase is not repeated the next day.
+  const summary = planReminders(s, new Date("2026-10-10T04:00:00Z"), [
+    manager.email,
+  ])[0];
+  assert.ok(summary.text.includes("1/1 shared"));
+  assert.ok(summary.text.includes("Need recordings"));
+});
+test("Sunday summaries survive Monday cron without counting next week's reports", () => {
+  const s = fixture();
+  s.settings.reportingDay = "7";
+  s.projects[0].due = "";
+  const monday = new Date("2026-10-12T04:00:00Z");
+  s.updates = [
+    planEntry(
+      s,
+      member,
+      {
+        projectId: s.projects[0].id,
+        weekStart: "2026-10-12",
+        progress: "New week started",
+        nextPlan: "Continue",
+        needsHelp: false,
+        blockers: "",
+      },
+      monday,
+    ),
+  ];
+  const summary = planReminders(s, monday, [manager.email])[0];
+  assert.equal(summary.reminder.phase, "weekly-summary");
+  assert.equal(summary.reminder.due, "2026-10-11T18:00");
+  assert.ok(summary.text.includes("Week of 2026-10-05"));
+  assert.ok(summary.text.includes("missing: Member"));
+  s.reminders.push({
+    ...summary.reminder,
+    sentAt: monday.toISOString(),
+    providerId: "accepted",
+  });
   assert.equal(
-    planReminders(store, new Date("2026-10-06T04:00:00Z")).length,
+    planReminders(s, new Date("2026-10-13T04:00:00Z"), [manager.email]).length,
     0,
   );
-  store.reminders = [];
-  store.profiles = [
-    {
-      id: "hars",
-      position: "PhD",
-      expertise: "LLMs",
-      bio: "",
-      reminders: "false",
-    },
+});
+test("milestone reminders send the day before and on the due date, without overdue spam", () => {
+  const s = fixture();
+  s.settings.reportingDay = "7";
+  const upcoming = planReminders(s, new Date("2026-10-08T04:00:00Z"), []);
+  assert.equal(upcoming.length, 1);
+  assert.equal(upcoming[0].reminder.phase, "milestone-before");
+  assert.equal(
+    planReminders(s, new Date("2026-10-09T04:00:00Z"), [])[0].reminder.phase,
+    "milestone-due",
+  );
+  assert.equal(
+    planReminders(s, new Date("2026-10-10T04:00:00Z"), []).length,
+    0,
+  );
+});
+test("completed projects, opt-outs, invalid emails and already accepted reminders send nothing", () => {
+  const s = fixture(),
+    date = new Date("2026-10-08T04:00:00Z");
+  s.settings.reportingDay = "7";
+  const item = planReminders(s, date)[0];
+  s.reminders = [
+    { ...item.reminder, sentAt: date.toISOString(), providerId: "accepted" },
   ];
-  assert.equal(planReminders(store, now).length, 0);
-  store.profiles = [];
-  store.assignments.find((a) => a.id === "A016")!.status = "Done";
-  assert.equal(planReminders(store, now).length, 0);
-  store.assignments.find((a) => a.id === "A016")!.status = "In progress";
-  store.people.find((p) => p.id === "hars")!.email = "sample@demo.invalid";
-  assert.equal(planReminders(store, now).length, 0);
+  assert.equal(planReminders(s, date).length, 0);
+  s.reminders = [];
+  s.people[1].reminders = "false";
+  assert.equal(planReminders(s, date).length, 0);
+  s.people[1].reminders = "true";
+  s.people[1].email = "member@demo.invalid";
+  assert.equal(planReminders(s, date).length, 0);
+  s.people[1].email = member.email;
+  s.projects[0].state = "completed";
+  assert.equal(planReminders(s, date, [manager.email]).length, 0);
 });
-test("responsibility deadlines and changed project due dates have distinct delivery IDs", () => {
-  const store = fixture();
-  const oldId = planReminders(store, now)[0].reminder.id;
-  store.assignments.find((a) => a.id === "A016")!.due = "2026-10-07";
-  assert.equal(planReminders(store, now).length, 2);
-  store.projects.find((p) => p.id === "P10")!.due = "2026-10-07";
-  assert.notEqual(planReminders(store, now)[0].reminder.id, oldId);
-});
-test("cron requires a strong secret and rejects missing or incorrect bearer headers", () => {
-  const secret = "private-cron-test-value-32-characters-minimum";
-  assert.throws(
-    () =>
-      requireCron(
-        new Request("https://lab.example.com/api/cron/reminders"),
-        secret,
-      ),
-    (e: unknown) => e instanceof AppError && e.status === 401,
-  );
-  assert.throws(
-    () =>
-      requireCron(
-        new Request("https://lab.example.com", {
-          headers: { authorization: "Bearer wrong" },
-        }),
-        secret,
-      ),
-    AppError,
-  );
-  assert.throws(
-    () => requireCron(new Request("https://lab.example.com"), "short"),
-    (e: unknown) => e instanceof AppError && e.status === 503,
-  );
-  requireCron(
-    new Request("https://lab.example.com", {
-      headers: { authorization: `Bearer ${secret}` },
-    }),
-    secret,
-  );
-});
-test("delivery reserves before sending and holds uncertain Gmail acceptance without resending", async () => {
-  const store = fixture();
+test("reservation precedes sending and uncertain acceptance is never automatically retried", async () => {
+  const s = fixture();
+  s.settings.reportingDay = "7";
+  const date = new Date("2026-10-08T04:00:00Z");
   const order: string[] = [];
-  const keys: string[] = [];
-  let failConfirm = true;
   const storage = {
     reserve: async (r: Reminder) => {
       order.push("reserve");
-      store.reminders!.push(r);
+      s.reminders.push(r);
     },
-    send: async (item: ReturnType<typeof planReminders>[number]) => {
+    send: async () => {
       order.push("send");
-      keys.push(item.reminder.id);
-      return "email-accepted";
+      return "accepted";
     },
-    confirm: async (r: Reminder) => {
+    confirm: async () => {
       order.push("confirm");
-      if (failConfirm) throw new Error("Sheet temporarily unavailable");
-      store.reminders = [r];
+      throw new Error("Sheet unavailable");
     },
   };
-  assert.deepEqual(await deliverReminders(store, storage, now), {
+  assert.deepEqual(await deliverReminders(s, storage, date), {
     sent: 0,
     failed: 1,
     needsReview: 0,
   });
   assert.deepEqual(order, ["reserve", "send", "confirm"]);
-  failConfirm = false;
-  assert.deepEqual(await deliverReminders(store, storage, now), {
+  assert.deepEqual(await deliverReminders(s, storage, date), {
     sent: 0,
     failed: 0,
     needsReview: 1,
   });
-  assert.equal(keys.length, 1);
-  assert.equal(store.reminders!.length, 1);
-  store.reminders![0].sentAt = now.toISOString();
-  assert.deepEqual(await deliverReminders(store, storage, now), {
-    sent: 0,
-    failed: 0,
-    needsReview: 0,
-  });
+  assert.equal(order.length, 3);
 });
-test("uncertain deliveries are held even within the first day because SMTP has no idempotency", async () => {
-  const store = fixture();
-  store.reminders = [planReminders(store, now)[0].reminder];
-  const never = async () => {
-    throw new Error("Must not send an uncertain duplicate");
-  };
-  assert.deepEqual(
-    await deliverReminders(
-      store,
-      { reserve: never, confirm: never, send: never },
-      new Date("2026-10-06T04:00:00Z"),
-    ),
-    { sent: 0, failed: 0, needsReview: 1 },
+test("cron rejects missing, weak or incorrect secrets without sending anything", () => {
+  const secret = "unit-test-cron-value-at-least-32-characters";
+  assert.throws(
+    () => requireCron(new Request("https://lab.example.com"), "short"),
+    AppError,
   );
-});
-test("profile updates cannot spoof identity, email or access role", () => {
-  const valid = {
-    name: "Lab member",
-    affiliation: "Lab",
-    position: "PhD",
-    expertise: "LLMs, statistics",
-    bio: "Research",
-    reminders: false,
-  };
-  assert.equal(profileSchema.safeParse(valid).success, true);
-  for (const field of ["id", "email", "role"])
-    assert.equal(
-      profileSchema.safeParse({ ...valid, [field]: "admin" }).success,
-      false,
-    );
-  assert.equal(
-    profileSchema.safeParse({ ...valid, position: "Invented" }).success,
-    false,
+  assert.throws(
+    () => requireCron(new Request("https://lab.example.com"), secret),
+    AppError,
   );
-  assert.equal(
-    membershipId("person-a", "P01"),
-    membershipId("person-a", "P01"),
-  );
-  assert.notEqual(
-    membershipId("person-a", "P01"),
-    membershipId("person-b", "P01"),
+  requireCron(
+    new Request("https://lab.example.com", {
+      headers: { Authorization: `Bearer ${secret}` },
+    }),
+    secret,
   );
 });
 test("Gmail transport uses TLS and app-password auth and requires recipient acceptance", async () => {

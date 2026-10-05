@@ -1,13 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-
-const errors = new WeakMap<Page, string[]>();
+const failures = new WeakMap<Page, string[]>();
 test.beforeEach(async ({ page }) => {
-  const list: string[] = [];
-  errors.set(page, list);
-  page.on("pageerror", (error) => list.push(error.message));
+  const messages: string[] = [];
+  failures.set(page, messages);
+  page.on("pageerror", (e) => messages.push(e.message));
 });
 test.afterEach(async ({ page }) => {
-  expect(errors.get(page)).toEqual([]);
+  expect(failures.get(page)).toEqual([]);
 });
 async function sample(page: Page, view: "admin" | "member" | "new") {
   await page.goto("/");
@@ -18,12 +17,7 @@ async function sample(page: Page, view: "admin" | "member" | "new") {
   expect(response.ok()).toBe(true);
   await page.goto("/");
 }
-async function jsonWrite(
-  page: Page,
-  path: string,
-  data: unknown,
-  method = "POST",
-) {
+async function write(page: Page, path: string, data: unknown, method = "POST") {
   return page.request.fetch(path, {
     method,
     data,
@@ -33,442 +27,468 @@ async function jsonWrite(
     },
   });
 }
+async function store(page: Page) {
+  return (await page.request.get("/api/workspace")).json();
+}
+async function onboard(page: Page, name: string, project?: string) {
+  await page.getByLabel("Your name", { exact: true }).fill(name);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  if (project)
+    await page
+      .getByRole("checkbox", { name: `Join ${project}`, exact: true })
+      .check();
+  await page
+    .getByRole("button", {
+      name: project ? "Open my work" : "Choose projects later",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "My work", exact: true }),
+  ).toBeVisible();
+}
 
-test("dashboard summarizes the lab while projects and people have separate pages", async ({
+test.describe.configure({ mode: "serial" });
+let pilotId = "";
+test("manager starts with an empty lab and creates a project using only name and goal", async ({
   page,
   context,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await sample(page, "admin");
   await expect(
-    page.getByRole("heading", { name: "Lab overview", exact: true }),
+    page.getByRole("heading", { name: "Start with your first project" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Needs attention" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Weekly reporting" }),
-  ).toBeVisible();
-  await expect(page.getByRole("table")).toHaveCount(0);
-  await expect(page.locator(".research-card")).toHaveCount(0);
-  await page.screenshot({ path: "test-results/dashboard.png", fullPage: true });
-  await page
-    .getByRole("button", { name: "Invite the lab", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText("Invite link copied");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    "http://localhost:3100",
-  );
-  await page
-    .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("link", { name: "Projects", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/projects$/);
-  await expect(page.locator(".research-card")).toHaveCount(15);
-  await page.screenshot({ path: "test-results/projects.png", fullPage: true });
-  await page.getByRole("textbox", { name: "Search projects" }).fill("LLM");
-  await expect(page.locator(".research-card").first()).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Search projects" })
-    .fill("impossible-project-search");
-  await expect(
-    page.getByRole("heading", { name: "No matching projects" }),
-  ).toBeVisible();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Teammates", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/people$/);
-  await expect(page.locator(".person-card")).toHaveCount(11);
-  await expect(page.locator(".research-card")).toHaveCount(0);
-});
-
-test("member reports progress in a project; authorship, previous plans and retries are preserved", async ({
-  page,
-}) => {
-  await sample(page, "member");
-  await expect(
-    page.getByRole("heading", { name: "My work", exact: true }),
-  ).toBeVisible();
-  await page.goto("/projects/P10");
-  await page
-    .getByRole("button", { name: "Write weekly update", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", { name: "Weekly update" });
-  await expect(
-    dialog.getByRole("combobox", { name: "Project", exact: true }),
-  ).toHaveValue("P10");
-  await expect(dialog.getByText("Previously, you planned to…")).toBeVisible();
-  await dialog
-    .getByLabel("Progress made")
-    .fill("Browser test: completed pilot model comparison.");
-  await dialog.getByRole("radio", { name: "Need help", exact: true }).check();
-  await dialog
-    .getByLabel(/Blockers or help needed/)
-    .fill("Browser test: need source documents.");
-  await dialog
-    .getByLabel(/Next week’s plan/)
-    .fill("Browser test: validate results next week.");
-  await dialog.getByRole("button", { name: "Publish update" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(
-    page
-      .locator(".update-card")
-      .filter({ hasText: "Browser test: completed pilot model comparison." }),
-  ).toContainText("Hars");
-  const store = await (await page.request.get("/api/workspace")).json();
-  const saved = store.updates.find(
-    (u: { progress: string }) =>
-      u.progress === "Browser test: completed pilot model comparison.",
-  );
-  expect(saved.personId).toBe("hars");
-  expect(
-    store.assignments.find((a: { id: string }) => a.id === "A016").status,
-  ).toBe("Blocked");
-  const retry = await jsonWrite(page, "/api/entries", {
-    entryId: saved.id,
-    projectId: "P10",
-    progress: "Attempt to change saved content",
-    status: "Done",
-  });
-  expect(retry.status()).toBe(200);
-  const after = await (await page.request.get("/api/workspace")).json();
-  expect(
-    after.updates.filter((u: { id: string }) => u.id === saved.id),
-  ).toHaveLength(1);
-  expect(
-    after.updates.find((u: { id: string }) => u.id === saved.id).progress,
-  ).toBe(saved.progress);
-  expect(
-    after.assignments.find((a: { id: string }) => a.id === "A016").status,
-  ).toBe("Blocked");
-});
-
-test("new Google-style member joins a project without admin setup and sees team progress", async ({
-  page,
-}) => {
-  await sample(page, "new");
-  await expect(
-    page.getByRole("heading", { name: "Let’s get to know you." }),
-  ).toBeVisible();
-  await expect(page.getByRole("navigation")).toHaveCount(0);
-  await page.getByLabel("Your name", { exact: true }).fill("New test member");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Choose projects later" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Choose your first project" }),
-  ).toBeVisible();
-  await page
-    .getByRole("link", { name: "Choose a project", exact: true })
-    .click();
-  await expect(page.locator(".research-card")).toHaveCount(15);
-  await expect(
-    page.getByRole("button", { name: "Create project" }),
-  ).toHaveCount(0);
-  await page.goto("/projects/P04");
-  await expect(
-    page.locator(".update-card").filter({ hasText: "Sample: finished coding" }),
-  ).toContainText("Lin");
-  await page.getByRole("button", { name: "Join project", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Write weekly update", exact: true }),
-  ).toBeVisible();
-  const before = await (await page.request.get("/api/workspace")).json();
-  const repeat = await jsonWrite(page, "/api/join", { projectId: "P04" });
-  expect(repeat.status()).toBe(200);
-  const joined = await (await page.request.get("/api/workspace")).json();
-  expect(
-    joined.assignments.filter(
-      (a: { personId: string; projectId: string }) =>
-        a.personId === joined.identity.personId && a.projectId === "P04",
-    ),
-  ).toHaveLength(1);
-  expect(joined.assignments.length).toBe(before.assignments.length);
-  await page
-    .getByRole("button", { name: "Write weekly update", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog");
-  await dialog
-    .getByLabel("Progress made")
-    .fill("New member: reviewed shared field notes.");
-  await dialog.getByRole("button", { name: "Publish update" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.locator(".update-card")).toHaveCount(2);
-  const after = await (await page.request.get("/api/workspace")).json();
-  expect(
-    after.updates.find(
-      (u: { progress: string }) =>
-        u.progress === "New member: reviewed shared field notes.",
-    ).personId,
-  ).toBe(joined.identity.personId);
-});
-
-test("profiles support expertise discovery and members cannot change identities or roles", async ({
-  page,
-}) => {
-  await sample(page, "new");
-  await page
-    .getByLabel("Your name", { exact: true })
-    .fill("Expertise test member");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Choose projects later" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "My profile", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/profile$/);
-  await page.getByLabel("Name", { exact: true }).fill("Expertise test member");
-  await page.getByLabel("Position", { exact: true }).selectOption("PhD");
-  await page
-    .getByLabel("Expertise", { exact: true })
-    .fill("Causal inference, Network analysis");
-  await page
-    .getByLabel("Research interests", { exact: true })
-    .fill("Collaboration on entrepreneurial ecosystems.");
-  await page
-    .getByRole("checkbox", { name: "Send me deadline reminders" })
-    .uncheck();
-  await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page.getByRole("status")).toContainText("Profile saved");
-  const profile = await (await page.request.get("/api/workspace")).json();
-  expect(
-    profile.profiles.find(
-      (p: { id: string }) => p.id === profile.identity.personId,
-    ).reminders,
-  ).toBe("false");
-  const forged = await jsonWrite(
-    page,
-    "/api/profile",
-    {
-      name: "Forged",
-      affiliation: "",
-      position: "PhD",
-      expertise: "",
-      bio: "",
-      reminders: true,
-      id: "harsimran",
-      role: "admin",
-    },
-    "PATCH",
-  );
-  expect(forged.status()).toBe(400);
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Teammates", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Search people and expertise" })
-    .fill("Causal inference");
-  await expect(page.locator(".person-card")).toHaveCount(1);
-  await expect(page.locator(".person-card")).toContainText(
-    "Expertise test member",
-  );
-  await page.getByRole("button", { name: "View profile", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Collaboration on entrepreneurial ecosystems.",
-  );
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
-  await page.reload();
-  await expect(
-    page.locator(".person-card").filter({ hasText: "Expertise test member" }),
-  ).toContainText("Causal inference");
-});
-
-test("shared reading does not allow editing another person's progress or administrator data", async ({
-  page,
-}) => {
-  await sample(page, "member");
-  await page.goto("/projects/P04");
-  await expect(
-    page.getByText("Sample: finished coding the next batch of field notes."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Manage project" }),
-  ).toHaveCount(0);
-  expect(
-    (
-      await jsonWrite(page, "/api/updates", {
-        assignmentId: "A004",
-        progress: "Forged",
-        status: "Done",
-      })
-    ).status(),
-  ).toBe(403);
-  expect((await jsonWrite(page, "/api/projects", {}, "PATCH")).status()).toBe(
-    403,
-  );
-  expect((await jsonWrite(page, "/api/projects", {})).status()).toBe(403);
-  expect((await jsonWrite(page, "/api/people", {}, "PATCH")).status()).toBe(
-    403,
-  );
-  expect((await jsonWrite(page, "/api/assignments", {})).status()).toBe(403);
-  expect(
-    (
-      await jsonWrite(page, "/api/entries", {
-        entryId: "e2e4e444-0011-4444-8111-002244668899",
-        newProjectName: "Unauthorized project",
-        progress: "Forged",
-        status: "On track",
-      })
-    ).status(),
-  ).toBe(403);
-  expect(
-    (await page.request.get("/api/member-preview?personId=hars")).status(),
-  ).toBe(403);
-});
-
-test("admin creates projects and manages phases, milestones and responsibility deadlines", async ({
-  page,
-}) => {
-  await sample(page, "admin");
-  await page.goto("/projects");
+  const initial = await store(page);
+  expect(initial.projects).toHaveLength(0);
+  expect(initial.memberships).toHaveLength(0);
+  expect(initial.updates).toHaveLength(0);
+  expect(initial.people).toHaveLength(1);
+  await expect(page.getByRole("navigation").getByRole("link")).toHaveCount(3);
   await page
     .getByRole("button", { name: "Create project", exact: true })
     .click();
-  let dialog = page.getByRole("dialog", { name: "Create project" });
+  const dialog = page.getByRole("dialog", { name: "Create project" });
+  await expect(dialog.getByRole("textbox")).toHaveCount(2);
+  await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog
     .getByLabel("Project name", { exact: true })
-    .fill("Browser collaboration project");
+    .fill("Interview pilot");
   await dialog
-    .getByLabel("Full research title")
-    .fill("Understand collaboration patterns in the remote lab.");
-  await dialog.getByLabel("Research stage").selectOption("Data collection");
-  await dialog.getByLabel("Next milestone").fill("Run the pilot study");
-  await dialog.getByLabel("Milestone due date").fill("2026-10-08");
-  await dialog.getByRole("button", { name: "Save project" }).click();
+    .getByLabel("Goal", { exact: true })
+    .fill("Understand how founders collaborate.");
+  await dialog
+    .getByRole("button", { name: "Save project", exact: true })
+    .click();
   await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("table")).toContainText("Interview pilot");
+  const after = await store(page);
+  expect(after.projects).toHaveLength(1);
+  expect(after.projects[0].phase).toBe("Idea");
+  pilotId = after.projects[0].id;
+  await page
+    .getByRole("button", { name: "Share website", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Website link copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "http://localhost:3100",
+  );
+  await page.screenshot({
+    path: "test-results/manager-overview.png",
+    fullPage: true,
+  });
+});
+
+test("member confirms only their name, joins a project and edits one weekly report", async ({
+  page,
+}) => {
+  await sample(page, "member");
+  await expect(
+    page.getByRole("heading", { name: "What should we call you?" }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(1);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await page.getByLabel("Your name", { exact: true }).fill("   ");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Enter your name." }),
+  ).toHaveText("Enter your name.");
+  await expect(
+    page.getByRole("heading", { name: "What should we call you?" }),
+  ).toBeVisible();
+  await onboard(page, "Alex Chen", "Interview pilot");
+  await page
+    .getByRole("button", {
+      name: "Write update for Interview pilot",
+      exact: true,
+    })
+    .click();
+  let dialog = page.getByRole("dialog", { name: "Write weekly update" });
+  await expect(dialog.getByRole("combobox")).toHaveCount(0);
+  await expect(dialog.getByRole("radio")).toHaveCount(0);
+  await expect(dialog.getByRole("textbox")).toHaveCount(2);
+  await expect(
+    dialog.getByLabel("What is blocking you?", { exact: true }),
+  ).toHaveCount(0);
+  await dialog
+    .getByLabel("What did you accomplish?", { exact: true })
+    .fill("Finished the first interviews.");
+  await dialog
+    .getByLabel("What will you do next?", { exact: true })
+    .fill("Code the interview notes.");
+  await dialog
+    .getByRole("checkbox", { name: "I need help", exact: true })
+    .check();
+  await expect(dialog.getByRole("textbox")).toHaveCount(3);
+  await dialog
+    .getByLabel("What is blocking you?", { exact: true })
+    .fill("Need the recording folder.");
+  await dialog
+    .getByRole("button", { name: "Submit update", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Weekly update saved");
+  const before = await store(page);
+  expect(before.updates).toHaveLength(1);
+  expect(before.updates[0].personId).toBe(before.identity.personId);
+  await page
+    .getByRole("button", {
+      name: "Edit update for Interview pilot",
+      exact: true,
+    })
+    .click();
+  dialog = page.getByRole("dialog", { name: "Edit this week’s update" });
+  await expect(
+    dialog.getByLabel("What did you accomplish?", { exact: true }),
+  ).toHaveValue("Finished the first interviews.");
+  await dialog
+    .getByLabel("What did you accomplish?", { exact: true })
+    .fill("Finished interviews and received the recordings.");
+  await dialog
+    .getByRole("checkbox", { name: "I need help", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByLabel("What is blocking you?", { exact: true }),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  const after = await store(page);
+  expect(after.updates).toHaveLength(1);
+  expect(after.updates[0].id).toBe(before.updates[0].id);
+  expect(after.updates[0].createdAt).toBe(before.updates[0].createdAt);
+  expect(after.updates[0].blockers).toBe("");
+  expect(after.updates[0].needsHelp).toBe("false");
+  await page.screenshot({ path: "test-results/my-work.png", fullPage: true });
+});
+
+test("members read team progress and self-join but cannot change manager data or another identity", async ({
+  page,
+}) => {
+  await sample(page, "new");
+  await onboard(page, "Jamie Rao");
+  await page
+    .getByRole("link", { name: "Choose a project", exact: true })
+    .click();
   await page
     .locator(".research-card")
-    .filter({ hasText: "Browser collaboration project" })
+    .filter({ hasText: "Interview pilot" })
     .click();
   await expect(
-    page.getByRole("heading", {
-      name: "Browser collaboration project",
+    page.getByText("Finished interviews and received the recordings.", {
       exact: true,
     }),
   ).toBeVisible();
   await expect(
-    page.getByLabel("Research phase: Data collection"),
-  ).toBeVisible();
-  await expect(page.locator(".milestone-strip")).toContainText(
-    "Run the pilot study",
-  );
-  await page.getByRole("button", { name: "Manage project" }).click();
-  dialog = page.getByRole("dialog", { name: "Manage project" });
-  await dialog.getByLabel("Research stage").selectOption("Data analysis");
-  await dialog.getByRole("button", { name: "Save project" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByLabel("Research phase: Data analysis")).toBeVisible();
-  await page.getByRole("tab", { name: "Team & responsibilities" }).click();
-  await page.getByRole("button", { name: "Assign", exact: true }).click();
-  dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Lab member").selectOption("hars");
-  await dialog
-    .getByLabel("Responsibility", { exact: true })
-    .fill("Interview coding");
-  await dialog.getByLabel("Due date", { exact: true }).fill("2026-10-09");
-  await dialog.getByRole("button", { name: "Save responsibility" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("tabpanel")).toContainText("Interview coding");
-  await page.reload();
-  await expect(page.getByLabel("Research phase: Data analysis")).toBeVisible();
-});
-
-test("production member preview follows navigation and protects the real administrator", async ({
-  page,
-}) => {
-  await sample(page, "admin");
-  await page.goto("/people");
-  await page.getByRole("link", { name: "Preview Hars", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "My work", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Member preview")).toContainText("Hars");
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Projects", exact: true })
-    .click();
-  await expect(page).toHaveURL(/preview=hars/);
-  await expect(
-    page.getByRole("button", { name: "Create project" }),
+    page.getByRole("heading", { name: "Manage project", exact: true }),
   ).toHaveCount(0);
-  await page.goto("/projects/P10?preview=hars");
-  await page
-    .getByRole("button", { name: "Write weekly update", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Join project", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Saving disabled in preview" }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
-  expect(
-    (await (await page.request.get("/api/workspace")).json()).identity.role,
-  ).toBe("admin");
-  await page.getByRole("link", { name: "Return to admin" }).click();
-  await page
-    .getByRole("button", { name: "Edit account for Harsimran", exact: true })
-    .click();
-  await expect(
-    page.getByRole("dialog").getByLabel("Google account email"),
-  ).toBeDisabled();
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("combobox", { name: "Role", exact: true }),
-  ).toBeDisabled();
-});
-
-test("mobile navigation, project workspace and weekly form remain usable", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await sample(page, "member");
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Projects", exact: true })
-    .click();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.goto("/projects/P10");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+    page.getByRole("button", { name: "Write weekly update", exact: true }),
+  ).toBeVisible();
+  const before = await store(page);
+  expect((await write(page, "/api/join", { projectId: pilotId })).ok()).toBe(
+    true,
+  );
+  expect((await store(page)).memberships.length).toBe(
+    before.memberships.length,
+  );
   await page
     .getByRole("button", { name: "Write weekly update", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Progress made").fill("Mobile report test");
-  await dialog.getByRole("button", { name: "Publish update" }).click();
+  await dialog
+    .getByLabel("What did you accomplish?", { exact: true })
+    .fill("Reviewed the sampling plan.");
+  await dialog
+    .getByLabel("What will you do next?", { exact: true })
+    .fill("Recruit more participants.");
+  await dialog
+    .getByRole("checkbox", { name: "I need help", exact: true })
+    .check();
+  await dialog
+    .getByLabel("What is blocking you?", { exact: true })
+    .fill("Need approval for recruitment.");
+  await dialog
+    .getByRole("button", { name: "Submit update", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".update-card")).toHaveCount(2);
+  expect((await write(page, "/api/projects", {}, "PATCH")).status()).toBe(403);
+  expect((await write(page, "/api/projects", {})).status()).toBe(403);
+  expect((await write(page, "/api/settings", {}, "PATCH")).status()).toBe(403);
+  expect((await write(page, "/api/email-test", {})).status()).toBe(403);
+  expect(
+    (
+      await write(
+        page,
+        "/api/profile",
+        { name: "Forged", reminders: true, id: "manager", role: "admin" },
+        "PATCH",
+      )
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await write(page, "/api/entries", {
+        projectId: pilotId,
+        weekStart: before.weekStart,
+        progress: "Forged",
+        nextPlan: "Next",
+        needsHelp: false,
+        blockers: "",
+        personId: "manager",
+      })
+    ).status(),
+  ).toBe(400);
+});
+
+test("manager reviews real members, sets only phase and milestone, and completion stops reporting", async ({
+  page,
+}) => {
+  await sample(page, "admin");
+  await expect(page.getByRole("table")).toContainText("2/2 shared");
+  await expect(
+    page.getByRole("heading", { name: "Requests for help" }),
+  ).toBeVisible();
+  await expect(page.locator(".attention-row")).toContainText("Jamie Rao");
+  await page
+    .getByRole("table")
+    .getByRole("link", { name: "Interview pilot", exact: true })
+    .click();
+  await expect(page.locator(".project-members")).toContainText("Alex Chen");
+  await expect(page.locator(".project-members")).toContainText("Jamie Rao");
+  await page.getByRole("button", { name: "Change phase", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "Change research phase" });
+  await expect(dialog.getByRole("combobox")).toHaveCount(1);
+  await dialog.getByLabel("Current phase").selectOption("Data collection");
+  await dialog
+    .getByRole("button", { name: "Save project", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".phase-summary")).toContainText("Data collection");
+  await page
+    .getByRole("button", { name: "Set milestone", exact: true })
+    .click();
+  dialog = page.getByRole("dialog", { name: "Set next milestone" });
+  await expect(dialog.locator("input")).toHaveCount(2);
+  await dialog
+    .getByLabel("Milestone", { exact: true })
+    .fill("Finish pilot interviews");
+  const s = await store(page);
+  const date = new Date(`${s.today}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  await dialog
+    .getByLabel("Due date", { exact: true })
+    .fill(date.toISOString().slice(0, 10));
+  await dialog
+    .getByRole("button", { name: "Save project", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".milestone-strip")).toContainText(
+    "Finish pilot interviews",
+  );
+  await page.screenshot({
+    path: "test-results/project-workspace.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Complete project", exact: true })
+    .click();
+  dialog = page.getByRole("dialog", { name: "Complete project" });
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Complete project", exact: true })
+    .click();
   await expect(dialog).toHaveCount(0);
   await expect(
-    page.getByText("Mobile report test", { exact: true }),
+    page.getByText("Completed project", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Write weekly update", exact: true }),
+  ).toHaveCount(0);
+  await sample(page, "member");
+  await expect(
+    page.getByRole("heading", { name: "Your projects are complete" }),
+  ).toBeVisible();
+  const me = await store(page);
+  expect(
+    (
+      await write(page, "/api/entries", {
+        projectId: pilotId,
+        weekStart: me.weekStart,
+        progress: "Late",
+        nextPlan: "Next",
+        needsHelp: false,
+        blockers: "",
+      })
+    ).status(),
+  ).toBe(409);
+  expect(
+    (await write(page, "/api/join", { projectId: pilotId })).status(),
+  ).toBe(409);
+  await page.goto(`/projects/${pilotId}`);
+  await expect(page.locator(".update-card")).toHaveCount(2);
+});
+
+test("account has only name and preferences; manager sets the schedule and previews Gmail", async ({
+  page,
+}) => {
+  await sample(page, "admin");
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Account & settings", exact: true })
+    .click();
+  await expect(
+    page.locator(".profile-form").first().getByRole("textbox"),
+  ).toHaveCount(1);
+  await page.getByLabel("Reporting day", { exact: true }).selectOption("5");
+  await page.getByLabel("Reporting time", { exact: true }).fill("18:00");
+  await page
+    .getByLabel("Lab timezone", { exact: true })
+    .selectOption("Asia/Hong_Kong");
+  await page
+    .getByRole("button", { name: "Save schedule", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Reporting schedule saved",
+  );
+  await page.reload();
+  expect((await store(page)).settings.timezone).toBe("Asia/Hong_Kong");
+  expect(
+    (
+      await write(page, "/api/email-test", { to: "other@example.com" })
+    ).status(),
+  ).toBe(400);
+  await page
+    .getByRole("button", { name: "Preview test email", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("No email was sent");
+  await sample(page, "member");
+  await page.goto("/account");
+  await expect(
+    page.getByRole("heading", { name: "Weekly reporting schedule" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("checkbox", { name: "Email me relevant reminders", exact: true })
+    .uncheck();
+  await page.getByRole("button", { name: "Save account", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Account saved");
+  const member = await store(page);
+  expect(
+    member.people.find((p: { id: string }) => p.id === member.identity.personId)
+      .reminders,
+  ).toBe("false");
+});
+
+test("mobile welcome, project help and weekly form are usable without redundant inputs", async ({
+  page,
+}) => {
+  await sample(page, "admin");
+  const id = "22222222-2222-4222-8222-222222222222";
+  expect(
+    (
+      await write(page, "/api/projects", {
+        id,
+        name: "Mobile study",
+        goal: "Validate the mobile reporting journey.",
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await sample(page, "new");
+  await onboard(page, "Mobile member", "Mobile study");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.goto(`/projects/${id}`);
+  const help = page.getByRole("button", { name: "Help: Research phase" });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("note")).toContainText("whole research project");
+  const bounds = await page.getByRole("note").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.keyboard.press("Escape");
+  await expect(help).toHaveAttribute("aria-expanded", "false");
+  await page
+    .getByRole("button", { name: "Write weekly update", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox")).toHaveCount(2);
+  await dialog
+    .getByLabel("What did you accomplish?", { exact: true })
+    .fill("Verified the mobile flow.");
+  await dialog
+    .getByLabel("What will you do next?", { exact: true })
+    .fill("Review results with the manager.");
+  await page.screenshot({
+    path: "test-results/mobile-report-form.png",
+    fullPage: true,
+  });
+  await dialog
+    .getByRole("button", { name: "Submit update", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByText("Verified the mobile flow.", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page.screenshot({
     path: "test-results/mobile-project.png",
     fullPage: true,
   });
 });
 
-test("production rejects demo authentication, anonymous reads and writes, and unauthorized cron", async ({
+test("removed legacy flows stay unavailable and anonymous production cannot read, write or impersonate", async ({
   page,
 }) => {
   const origin = "http://localhost:3101";
   await page.goto(origin);
   await expect(page.getByText("Google setup is still needed")).toBeVisible();
-  for (const view of ["admin", "member", "new", "person:harsimran"])
-    expect(
-      (
-        await page.request.post(`${origin}/api/demo`, { form: { view } })
-      ).status(),
-    ).toBe(404);
+  expect(
+    (
+      await page.request.post(`${origin}/api/demo`, { form: { view: "admin" } })
+    ).status(),
+  ).toBe(404);
   expect((await page.request.get(`${origin}/api/workspace`)).status()).toBe(
     401,
   );
-  for (const path of ["entries", "join", "projects"])
+  for (const path of [
+    "projects",
+    "entries",
+    "join",
+    "onboarding",
+    "email-test",
+  ])
     expect(
       (
         await page.request.post(`${origin}/api/${path}`, {
@@ -477,161 +497,26 @@ test("production rejects demo authentication, anonymous reads and writes, and un
         })
       ).status(),
     ).toBe(401);
-  expect(
-    (
-      await page.request.patch(`${origin}/api/profile`, {
-        data: {},
-        headers: { Origin: origin },
-      })
-    ).status(),
-  ).toBe(401);
-  // No configured cron secret: fail closed, without attempting email or Sheets.
+  for (const path of ["profile", "settings"])
+    expect(
+      (
+        await page.request.patch(`${origin}/api/${path}`, {
+          data: {},
+          headers: { Origin: origin },
+        })
+      ).status(),
+    ).toBe(401);
+  for (const path of [
+    "roster-links",
+    "people",
+    "assignments",
+    "member-preview",
+    "setup",
+  ])
+    expect((await page.request.get(`${origin}/api/${path}`)).status()).toBe(
+      404,
+    );
   expect(
     (await page.request.get(`${origin}/api/cron/reminders`)).status(),
   ).toBe(503);
-});
-
-test("project deep links support browser history and missing projects show a helpful page", async ({
-  page,
-}) => {
-  await sample(page, "member");
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Projects", exact: true })
-    .click();
-  await page.locator(".research-card").filter({ hasText: "P10" }).click();
-  await expect(page).toHaveURL(/\/projects\/P10$/);
-  await page.goBack();
-  await expect(
-    page.getByRole("heading", { name: "Projects", exact: true }),
-  ).toBeVisible();
-  await page.goto("/projects/does-not-exist");
-  await expect(
-    page.getByRole("heading", { name: "Project not found." }),
-  ).toBeVisible();
-});
-
-test("welcome can select an imported name, keeps Google identity, and admin confirms previous work", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await sample(page, "new");
-  await expect(
-    page.getByRole("heading", { name: "Let’s get to know you." }),
-  ).toBeVisible();
-  await expect(page.getByRole("navigation")).toHaveCount(0);
-  const help = page.getByRole("button", {
-    name: "Help: Connecting previous work",
-  });
-  await help.focus();
-  await page.keyboard.press("Enter");
-  await expect(help).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("note")).toContainText(
-    "nobody can claim another person’s work",
-  );
-  await page.keyboard.press("Escape");
-  await expect(help).toHaveAttribute("aria-expanded", "false");
-  await page.getByLabel("Existing lab name").selectOption("lin");
-  await expect(page.getByLabel("Your name", { exact: true })).toHaveValue(
-    "Lin",
-  );
-  await page
-    .getByLabel("Your name", { exact: true })
-    .fill("Lin preferred name");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  const before = await (await page.request.get("/api/workspace")).json();
-  const memberId = before.identity.personId;
-  await page.screenshot({
-    path: "test-results/welcome-mobile.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Open my workspace", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "My work", exact: true }),
-  ).toBeVisible();
-  const pending = await (await page.request.get("/api/workspace")).json();
-  expect(pending.identity.personId).toBe(memberId);
-  expect(pending.identity.role).toBe("member");
-  expect(pending.people.find((p: { id: string }) => p.id === "lin").email).toBe(
-    "",
-  );
-  expect(
-    pending.updates.find((u: { progress: string }) =>
-      u.progress.startsWith("Sample: finished coding"),
-    ).personId,
-  ).toBe("lin");
-  expect(
-    (
-      await jsonWrite(page, "/api/roster-links", {
-        id: memberId,
-        approve: true,
-      })
-    ).status(),
-  ).toBe(403);
-  expect((await jsonWrite(page, "/api/email-test", {})).status()).toBe(403);
-  await sample(page, "admin");
-  await page.goto("/people");
-  await page
-    .getByRole("button", {
-      name: `Confirm connection for ${pending.identity.email}`,
-      exact: true,
-    })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Previous work connected",
-  );
-  const connected = await (await page.request.get("/api/workspace")).json();
-  expect(connected.people.some((p: { id: string }) => p.id === "lin")).toBe(
-    false,
-  );
-  expect(
-    connected.people.find((p: { id: string }) => p.id === memberId).email,
-  ).toBe(pending.identity.email);
-  expect(
-    connected.updates.find((u: { progress: string }) =>
-      u.progress.startsWith("Sample: finished coding"),
-    ).personId,
-  ).toBe(memberId);
-  expect(
-    connected.assignments.find((a: { id: string }) => a.id === "A004").personId,
-  ).toBe(memberId);
-  expect(
-    connected.onboarding.find((r: { id: string }) => r.id === memberId).status,
-  ).toBe("approved");
-  expect(
-    (
-      await jsonWrite(page, "/api/roster-links", {
-        id: memberId,
-        approve: true,
-      })
-    ).status(),
-  ).toBe(409);
-});
-
-test("admin tests their own email from profile and sample mode sends nothing", async ({
-  page,
-}) => {
-  await sample(page, "admin");
-  await page.goto("/profile");
-  await expect(
-    page.getByRole("heading", { name: "Lab email reminders" }),
-  ).toBeVisible();
-  expect(
-    (
-      await jsonWrite(page, "/api/email-test", {
-        to: "someone-else@example.com",
-      })
-    ).status(),
-  ).toBe(400);
-  await page
-    .getByRole("button", { name: "Preview test email", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText("No email was sent");
 });

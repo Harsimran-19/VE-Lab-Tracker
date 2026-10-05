@@ -1,59 +1,35 @@
 import "server-only";
 import { JWT } from "google-auth-library";
 import { AppError } from "./access";
+import { emptyStore } from "./types";
 import type {
-  Onboarding,
-  Assignment,
-  Collaborator,
-  Person,
-  Profile,
-  Project,
-  Reminder,
   Store,
+  Project,
+  Person,
+  Membership,
   Update,
+  Settings,
+  Reminder,
 } from "./types";
-
+// Fresh schema: legacy tracker tabs are never read, imported, or overwritten.
 export const TABLES = {
-  Projects: [
-    "id",
-    "name",
-    "title",
-    "stage",
-    "pipeline",
-    "methods",
-    "journal",
-    "conference",
-    "priority",
-    "milestone",
-    "due",
-    "notes",
-  ],
-  People: ["id", "name", "email", "affiliation", "role"],
-  Assignments: [
-    "id",
-    "projectId",
-    "personId",
-    "responsibility",
-    "status",
-    "due",
-  ],
-  Collaborators: ["id", "projectId", "name", "affiliation", "role"],
-  Updates: [
+  LabProjects: ["id", "name", "goal", "phase", "milestone", "due", "state"],
+  LabMembers: ["id", "name", "email", "setupComplete", "reminders"],
+  LabMemberships: ["id", "projectId", "personId", "joinedAt"],
+  LabReports: [
     "id",
     "createdAt",
+    "updatedAt",
+    "weekStart",
     "projectId",
-    "assignmentId",
     "personId",
     "progress",
-    "blockers",
     "nextPlan",
-    "status",
+    "needsHelp",
+    "blockers",
   ],
-} as const;
-export const EXTRA_TABLES = {
-  Onboarding: ["id", "completedAt", "rosterId", "status", "requesterEmail"],
-  Profiles: ["id", "position", "expertise", "bio", "reminders"],
-  Reminders: [
+  LabSettings: ["id", "reportingDay", "reportingTime", "timezone"],
+  LabDeliveries: [
     "id",
     "personId",
     "projectId",
@@ -64,23 +40,8 @@ export const EXTRA_TABLES = {
     "providerId",
   ],
 } as const;
-const ALL_TABLES = { ...TABLES, ...EXTRA_TABLES };
-type Table = keyof typeof ALL_TABLES;
-type Entity =
-  | Project
-  | Person
-  | Assignment
-  | Collaborator
-  | Update
-  | Profile
-  | Reminder
-  | Onboarding;
-export class SheetSetupError extends AppError {
-  constructor() {
-    super("The new spreadsheet has not been initialized yet.", 409);
-  }
-}
-
+export type Table = keyof typeof TABLES;
+type Entity = Project | Person | Membership | Update | Settings | Reminder;
 let auth: JWT | undefined;
 async function request(path: string, init?: RequestInit) {
   const sheet = process.env.GOOGLE_SHEET_ID;
@@ -133,16 +94,16 @@ async function request(path: string, init?: RequestInit) {
   }
   return response.json();
 }
+
 function toObjects<T>(values: string[][], headers: readonly string[]): T[] {
-  const actual = values[0] ?? [];
-  if (headers.some((h, i) => actual[i] !== h))
+  if (headers.some((h, i) => values[0]?.[i] !== h))
     throw new AppError(
-      "The spreadsheet headers do not match the app. Restore the expected headers using the setup guide. Existing records have not been changed.",
+      "Lab spreadsheet headers do not match. Restore the headers from lib/sheets.ts; existing records were not changed.",
       409,
     );
-  return values
-    .slice(1)
-    .filter((r) => r[0])
+  const rows = values.slice(1).filter((r) => r[0]);
+  return rows
+    .filter((r, i) => rows.findLastIndex((v) => v[0] === r[0]) === i)
     .map(
       (row) =>
         Object.fromEntries(
@@ -157,264 +118,108 @@ export async function readSheet(): Promise<Store> {
       (s: { properties: { title: string } }) => s.properties.title,
     ),
   );
-  if (!Object.keys(TABLES).every((t) => names.has(t)))
-    throw new SheetSetupError();
+  const tables = Object.keys(TABLES) as Table[];
+  if (!tables.some((t) => names.has(t))) return emptyStore();
+  if (!tables.every((t) => names.has(t))) {
+    await ensureTables(true);
+    return readSheet();
+  }
   const query = new URLSearchParams();
-  const tables = [
-    ...Object.keys(TABLES),
-    ...Object.keys(EXTRA_TABLES).filter((t) => names.has(t)),
-  ];
   for (const table of tables) query.append("ranges", `'${table}'!A:Z`);
   query.set("valueRenderOption", "UNFORMATTED_VALUE");
-  const result = await request(`/values:batchGet?${query}`);
-  const ranges = result.valueRanges.map(
+  const data = await request(`/values:batchGet?${query}`);
+  const rows = data.valueRanges.map(
     (r: { values?: string[][] }) => r.values ?? [],
   );
   if (
-    ranges.every(
-      (r: string[][]) => !r.some((row) => row.some((cell) => cell !== "")),
-    )
-  )
-    throw new SheetSetupError();
-  const store: Store = {
-    onboarding: names.has("Onboarding")
-      ? toObjects<Onboarding>(
-          ranges[tables.indexOf("Onboarding")],
-          EXTRA_TABLES.Onboarding,
-        )
-      : [],
-    projects: toObjects<Project>(ranges[0], TABLES.Projects),
-    people: toObjects<Person>(ranges[1], TABLES.People),
-    assignments: toObjects<Assignment>(ranges[2], TABLES.Assignments),
-    collaborators: toObjects<Collaborator>(ranges[3], TABLES.Collaborators),
-    updates: toObjects<Update>(ranges[4], TABLES.Updates),
-    profiles: names.has("Profiles")
-      ? toObjects<Profile>(
-          ranges[tables.indexOf("Profiles")],
-          EXTRA_TABLES.Profiles,
-        )
-      : [],
-    reminders: names.has("Reminders")
-      ? toObjects<Reminder>(
-          ranges[tables.indexOf("Reminders")],
-          EXTRA_TABLES.Reminders,
-        )
-      : [],
-  };
-  // Identical first-login appends can race across Vercel instances. Keep one
-  // logical person for a stable Google ID; never merge different identities.
-  store.people = store.people.filter((person, index, people) => {
-    const first = people.findIndex((p) => p.id === person.id);
-    const original = people[first];
-    if (
-      original.email.trim().toLowerCase() !== person.email.trim().toLowerCase()
-    )
-      throw new AppError(
-        "Conflicting person records in the People tab. Correct the duplicate before continuing.",
-        409,
-      );
-    // Edits resolve the last row by ID, so use that row's name/access role.
-    return people.findLastIndex((p) => p.id === person.id) === index;
-  });
-  if (store.people.some((p) => !["admin", "member"].includes(p.role)))
-    throw new AppError("People.role must be admin or member.", 409);
-  const emails = store.people
-    .map((p) => p.email.toLowerCase().trim())
-    .filter(Boolean);
-  if (new Set(emails).size !== emails.length)
+    rows.some((r: string[][]) => !r.some((row) => row.some((v) => v !== "")))
+  ) {
+    await ensureTables(true);
+    return readSheet();
+  }
+  const people = toObjects<Person>(rows[1], TABLES.LabMembers);
+  const emails = people.map((p) => p.email.trim().toLowerCase());
+  if (emails.some((e) => !e) || new Set(emails).size !== emails.length)
     throw new AppError(
-      "Two people have the same email in the People tab. Correct the duplicate before continuing.",
+      "LabMembers has conflicting Google accounts. Correct duplicate emails before continuing.",
       409,
     );
-  // Concurrent first profile saves may append twice; the latest row wins.
-  store.profiles = store.profiles!.filter(
-    (p, i, rows) => rows.findLastIndex((r) => r.id === p.id) === i,
-  );
-  store.assignments = store.assignments.filter((a, i, rows) => {
-    const original = rows.find((r) => r.id === a.id)!;
-    if (original.personId !== a.personId || original.projectId !== a.projectId)
-      throw new AppError(
-        "Conflicting responsibility identities in the Assignments tab.",
-        409,
-      );
-    return rows.findLastIndex((r) => r.id === a.id) === i;
-  });
-  store.reminders = store.reminders!.filter(
-    (r, i, rows) => rows.findLastIndex((row) => row.id === r.id) === i,
-  );
-  store.onboarding = store.onboarding!.filter(
-    (r, i, rows) => rows.findLastIndex((v) => v.id === r.id) === i,
-  );
-  return store;
+  return {
+    projects: toObjects<Project>(rows[0], TABLES.LabProjects),
+    people,
+    memberships: toObjects<Membership>(rows[2], TABLES.LabMemberships),
+    updates: toObjects<Update>(rows[3], TABLES.LabReports),
+    settings:
+      toObjects<Settings>(rows[4], TABLES.LabSettings).find(
+        (s) => s.id === "lab",
+      ) ?? emptyStore().settings,
+    reminders: toObjects<Reminder>(rows[5], TABLES.LabDeliveries),
+  };
 }
-function cells(table: Table, entity: Entity) {
-  return ALL_TABLES[table].map((h) =>
-    String((entity as unknown as Record<string, string>)[h] ?? ""),
+export async function ensureTables(checkHeaders = false) {
+  const meta = await request("?fields=sheets.properties.title");
+  const names = new Set(
+    meta.sheets.map(
+      (s: { properties: { title: string } }) => s.properties.title,
+    ),
   );
-}
-
-// Add only optional tabs; never reinitialize or rewrite the original records.
-export async function ensureExtraTable(table: keyof typeof EXTRA_TABLES) {
-  const metadata = () => request("?fields=sheets.properties.title");
-  let meta = await metadata();
-  if (
-    !meta.sheets.some(
-      (s: { properties: { title: string } }) => s.properties.title === table,
-    )
-  ) {
+  const missing = Object.keys(TABLES).filter((t) => !names.has(t));
+  if (!missing.length && !checkHeaders) return;
+  if (missing.length) {
     try {
       await request(":batchUpdate", {
         method: "POST",
         body: JSON.stringify({
-          requests: [
-            {
-              addSheet: {
-                properties: {
-                  title: table,
-                  gridProperties: { frozenRowCount: 1 },
-                },
-              },
+          requests: missing.map((title) => ({
+            addSheet: {
+              properties: { title, gridProperties: { frozenRowCount: 1 } },
             },
-          ],
+          })),
         }),
       });
-    } catch (error) {
-      // Another instance may have created this same tab in the meantime.
-      meta = await metadata();
+    } catch (e) {
+      const latest = await request("?fields=sheets.properties.title");
       if (
-        !meta.sheets.some(
-          (s: { properties: { title: string } }) =>
-            s.properties.title === table,
+        !Object.keys(TABLES).every((t) =>
+          latest.sheets.some(
+            (s: { properties: { title: string } }) => s.properties.title === t,
+          ),
         )
       )
-        throw error;
+        throw e;
     }
   }
-  const data = await request(`/values/${encodeURIComponent(`'${table}'!A:Z`)}`);
-  if (data.values?.some((r: string[]) => r.some((v) => v !== ""))) {
-    toObjects(data.values, EXTRA_TABLES[table]);
-    return;
-  }
-  await request(
-    `/values/${encodeURIComponent(`'${table}'!A1`)}?valueInputOption=RAW`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ values: [[...EXTRA_TABLES[table]]] }),
-    },
-  );
-}
-export async function upsertProfile(profile: Profile) {
-  return upsertExtra("Profiles", profile);
-}
-export async function upsertExtra(
-  table: keyof typeof EXTRA_TABLES,
-  profile: Profile | Onboarding,
-) {
-  await ensureExtraTable(table);
-  const data = await request(`/values/${encodeURIComponent(`'${table}'!A:A`)}`);
-  const index = (data.values ?? []).findLastIndex(
-    (row: string[]) => row[0] === profile.id,
-  );
-  if (index < 1) return appendSheet(table, profile);
-  await request(
-    `/values/${encodeURIComponent(`'${table}'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ values: [cells(table, profile)] }),
-    },
-  );
-}
-export async function appendSheet(table: Table, entity: Entity) {
-  await request(
-    `/values/${encodeURIComponent(`'${table}'!A:Z`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    {
-      method: "POST",
-      body: JSON.stringify({ values: [cells(table, entity)] }),
-    },
-  );
-}
-export async function replaceSheet(
-  table: Table,
-  entity: Entity,
-  allMatchingRows = false,
-) {
-  const result = await request(
-    `/values/${encodeURIComponent(`'${table}'!A:A`)}`,
-  );
-  const index = (result.values ?? []).findLastIndex(
-    (row: string[]) => row[0] === entity.id,
-  );
-  if (index < 1)
-    throw new AppError(
-      "This record no longer exists. Refresh and try again.",
-      404,
-    );
-  const indices = allMatchingRows
-    ? (result.values ?? []).flatMap((row: string[], i: number) =>
-        i > 0 && row[0] === entity.id ? [i] : [],
-      )
-    : [index];
-  // Imported history may include identical concurrent appends. Move every
-  // physical copy together so the next read sees one consistent identity.
-  for (const rowIndex of indices) {
-    await request(
-      `/values/${encodeURIComponent(`'${table}'!A${rowIndex + 1}:Z${rowIndex + 1}`)}?valueInputOption=RAW`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ values: [cells(table, entity)] }),
-      },
-    );
-  }
-}
-export async function initializeSheet(seed: Store) {
-  const meta = await request("?fields=sheets.properties(title,sheetId)");
-  const existing = meta.sheets as {
-    properties: { title: string; sheetId: number };
-  }[];
-  const names = new Set(existing.map((s) => s.properties.title));
-  // Never replace an existing workbook or partially populated table.
-  for (const table of Object.keys(TABLES) as (keyof typeof TABLES)[]) {
-    if (!names.has(table)) continue;
+  for (const table of Object.keys(TABLES) as Table[]) {
     const data = await request(
       `/values/${encodeURIComponent(`'${table}'!A:Z`)}`,
     );
-    if (data.values?.some((r: string[]) => r.some((v) => v !== "")))
-      throw new AppError(
-        "This Sheet already contains tracker data. Initialization does not overwrite existing records. Choose a new blank Sheet.",
-        409,
-      );
+    if (data.values?.some((r: string[]) => r.some((v) => v !== ""))) {
+      toObjects(data.values, TABLES[table]);
+      continue;
+    }
+    await request(
+      `/values/${encodeURIComponent(`'${table}'!A1`)}?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values: [[...TABLES[table]]] }) },
+    );
   }
-  const missing = Object.keys(TABLES).filter((t) => !names.has(t));
-  if (missing.length)
-    await request(":batchUpdate", {
-      method: "POST",
-      body: JSON.stringify({
-        requests: missing.map((title) => ({
-          addSheet: {
-            properties: { title, gridProperties: { frozenRowCount: 1 } },
-          },
-        })),
-      }),
-    });
-  const keys = {
-    Projects: "projects",
-    People: "people",
-    Assignments: "assignments",
-    Collaborators: "collaborators",
-    Updates: "updates",
-  } as const;
-  await request("/values:batchUpdate", {
-    method: "POST",
-    body: JSON.stringify({
-      valueInputOption: "RAW",
-      data: (Object.keys(TABLES) as (keyof typeof TABLES)[]).map((table) => ({
-        range: `'${table}'!A1`,
-        values: [
-          [...TABLES[table]],
-          ...seed[keys[table]].map((e) => cells(table, e)),
-        ],
-      })),
-    }),
+}
+function cells(table: Table, entity: Entity) {
+  return TABLES[table].map((h) =>
+    String((entity as unknown as Record<string, string>)[h] ?? ""),
+  );
+}
+export async function upsertSheet(table: Table, entity: Entity) {
+  await ensureTables();
+  const data = await request(`/values/${encodeURIComponent(`'${table}'!A:A`)}`);
+  const index = (data.values ?? []).findLastIndex(
+    (r: string[]) => r[0] === entity.id,
+  );
+  const path =
+    index < 1
+      ? `/values/${encodeURIComponent(`'${table}'!A:Z`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`
+      : `/values/${encodeURIComponent(`'${table}'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`;
+  await request(path, {
+    method: index < 1 ? "POST" : "PUT",
+    body: JSON.stringify({ values: [cells(table, entity)] }),
   });
-  return readSheet();
 }

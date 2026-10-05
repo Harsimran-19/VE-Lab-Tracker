@@ -2,7 +2,16 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { AppError } from "./access";
 import { gmailConfiguration, sendGmail } from "./mail";
-import { dateInZone, dayDifference } from "./calendar";
+import {
+  dateInZone,
+  dayDifference,
+  addDays,
+  startOfWeek,
+  localDateTime,
+  reportingDeadline,
+  expectedThisWeek,
+} from "./calendar";
+import { latestReports } from "./format";
 import type { Reminder, Store } from "./types";
 
 export function requireCron(
@@ -28,128 +37,182 @@ export function emailConfiguration() {
     throw new AppError("Use the HTTPS website URL for reminders.", 503);
   return { origin: origin.origin };
 }
+export interface PlannedEmail {
+  reminder: Reminder;
+  email: string;
+  name: string;
+  subject: string;
+  text: string;
+}
 export function planReminders(
   store: Store,
   now = new Date(),
-  timezone = "Asia/Kolkata",
+  admins: string[] = [],
+  origin = process.env.NEXTAUTH_URL ?? "",
 ) {
-  const today = dateInZone(now, timezone);
-  const planned: {
-    reminder: Reminder;
-    email: string;
-    name: string;
-    project: string;
-    milestone: string;
-  }[] = [];
+  const { settings } = store,
+    today = dateInZone(now, settings.timezone),
+    week = startOfWeek(today),
+    due = reportingDeadline(settings, now),
+    localNow = localDateTime(now, settings.timezone);
+  const active = store.projects.filter((p) => p.state === "active"),
+    expected = store.memberships.filter(
+      (m) =>
+        active.some((p) => p.id === m.projectId) &&
+        expectedThisWeek(m, store, now),
+    );
+  const pending = expected.filter(
+    (m) =>
+      !store.updates.some(
+        (u) =>
+          u.personId === m.personId &&
+          u.projectId === m.projectId &&
+          u.weekStart === week,
+      ),
+  );
+  // A Sunday cutoff can be followed by a Monday cron run. Keep the summary
+  // tied to the completed reporting week instead of the scheduler's new week.
+  const summaryWeek = due.passed ? week : addDays(week, -7);
+  const summaryDate = due.passed ? due.date : addDays(due.date, -7);
+  const summaryExpected = store.memberships.filter(
+    (m) =>
+      active.some((p) => p.id === m.projectId) &&
+      (localDateTime(new Date(m.joinedAt), settings.timezone) <=
+        `${summaryDate}T${due.time}` ||
+        store.updates.some(
+          (u) =>
+            u.personId === m.personId &&
+            u.projectId === m.projectId &&
+            u.weekStart === summaryWeek,
+        )),
+  );
+  const summaryPending = summaryExpected.filter(
+    (m) =>
+      !store.updates.some(
+        (u) =>
+          u.personId === m.personId &&
+          u.projectId === m.projectId &&
+          u.weekStart === summaryWeek,
+      ),
+  );
+  const help = latestReports(store.updates).filter(
+    (u) => u.needsHelp === "true" && active.some((p) => p.id === u.projectId),
+  );
+  const result: PlannedEmail[] = [];
   for (const person of store.people) {
     if (
-      !person.email ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email) ||
       person.email.endsWith(".invalid") ||
-      store.profiles?.find((p) => p.id === person.id)?.reminders === "false"
+      person.reminders === "false"
     )
       continue;
-    const own = store.assignments.filter(
-      (a) => a.personId === person.id && a.status !== "Done",
-    );
-    const projectIds = new Set(own.map((a) => a.projectId));
-    const targets = [
-      ...store.projects
-        .filter(
-          (p) => projectIds.has(p.id) && p.due && p.pipeline !== "Accepted",
-        )
-        .map((p) => ({
-          id: `project:${p.id}`,
-          projectId: p.id,
-          due: p.due,
-          title: p.milestone || "Project milestone",
-        })),
-      ...own
-        .filter((a) => a.due)
-        .map((a) => ({
-          id: `assignment:${a.id}`,
-          projectId: a.projectId,
-          due: a.due,
-          title: a.responsibility,
-        })),
-    ];
-    for (const target of targets) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(target.due)) continue;
-      const days = dayDifference(target.due, today);
-      // One reminder while approaching, one on the due date, one after it.
-      // A daily scheduler can recover a missed run inside either window.
-      const phase =
-        days > 0 && days <= 3
-          ? "upcoming"
-          : days === 0
-            ? "due"
-            : days < 0 && days >= -7
-              ? "overdue"
-              : "";
-      if (!phase) continue;
+    function add(
+      phase: string,
+      target: string,
+      dueValue: string,
+      subject: string,
+      text: string,
+      projectId = "",
+    ) {
       const id = `reminder-${createHash("sha256")
         .update(
           JSON.stringify([
             person.id,
             person.email.toLowerCase(),
-            target.id,
-            target.due,
             phase,
+            target,
+            phase.startsWith("weekly-") ? "" : dueValue,
           ]),
         )
         .digest("hex")}`;
-      const existing = store.reminders?.find((r) => r.id === id);
-      if (existing?.sentAt) continue;
-      const reminder = existing ?? {
-        id,
-        personId: person.id,
-        projectId: target.projectId,
-        due: target.due,
-        phase,
-        createdAt: now.toISOString(),
-        sentAt: "",
-        providerId: "",
-      };
-      planned.push({
-        reminder,
+      const existing = store.reminders.find((r) => r.id === id);
+      if (existing?.sentAt) return;
+      result.push({
+        reminder: existing ?? {
+          id,
+          personId: person.id,
+          projectId,
+          due: dueValue,
+          phase,
+          createdAt: now.toISOString(),
+          sentAt: "",
+          providerId: "",
+        },
         email: person.email,
         name: person.name,
-        project:
-          store.projects.find((p) => p.id === target.projectId)?.name ??
-          "Lab project",
-        milestone: target.title,
+        subject: subject.replace(/[\r\n]/g, " ").slice(0, 200),
+        text: `Hi ${person.name},\n\n${text}\n\nEmail preferences: ${origin}/account\n\nVenture Engineering Lab`,
       });
     }
+    const missing = pending.filter((m) => m.personId === person.id);
+    if (
+      missing.length &&
+      localNow >= `${addDays(due.date, -1)}T${due.time}` &&
+      localNow < `${due.date}T${due.time}`
+    ) {
+      const projects = active.filter((p) =>
+        missing.some((m) => m.projectId === p.id),
+      );
+      add(
+        "weekly-update",
+        week,
+        `${due.date}T${due.time}`,
+        "VE Lab · Your weekly updates are due",
+        `Please share progress for:\n${projects.map((p) => `- ${p.name}: ${origin}/projects/${encodeURIComponent(p.id)}`).join("\n")}\n\nDue: ${due.date} at ${due.time} (${settings.timezone}).\nIf you need help, say so in your update.`,
+      );
+    }
+    if (
+      admins.includes(person.email.toLowerCase()) &&
+      active.length &&
+      (due.passed || summaryExpected.length > 0)
+    ) {
+      const lines = active.map((p) => {
+        const members = summaryExpected.filter((m) => m.projectId === p.id),
+          gaps = summaryPending.filter((m) => m.projectId === p.id);
+        return `- ${p.name}: ${members.length - gaps.length}/${members.length} shared${gaps.length ? `; missing: ${gaps.map((m) => store.people.find((p) => p.id === m.personId)?.name ?? "Member").join(", ")}` : ""}`;
+      });
+      const requests = help.map(
+        (u) =>
+          `- ${store.people.find((p) => p.id === u.personId)?.name ?? "Member"} · ${active.find((p) => p.id === u.projectId)?.name}: ${u.blockers}`,
+      );
+      add(
+        "weekly-summary",
+        summaryWeek,
+        `${summaryDate}T${due.time}`,
+        "VE Lab · Weekly lab summary",
+        `Week of ${summaryWeek}\n\nReporting:\n${lines.join("\n")}\n\nRequests for help:\n${requests.length ? requests.join("\n") : "None reported."}\n\nOpen the lab: ${origin}/`,
+      );
+    }
+    for (const project of active.filter(
+      (p) =>
+        p.due &&
+        store.memberships.some(
+          (m) => m.personId === person.id && m.projectId === p.id,
+        ),
+    )) {
+      const days = dayDifference(project.due, today);
+      if (days !== 1 && days !== 0) continue;
+      add(
+        days === 1 ? "milestone-before" : "milestone-due",
+        project.id,
+        project.due,
+        `${days === 0 ? "Due today" : "Due tomorrow"} · ${project.name}`,
+        `${project.milestone}\nProject: ${project.name}\nDue: ${project.due}\n\nOpen the project: ${origin}/projects/${encodeURIComponent(project.id)}`,
+        project.id,
+      );
+    }
   }
-  return planned.filter(
-    (p, i, rows) =>
-      rows.findIndex((r) => r.reminder.id === p.reminder.id) === i,
-  );
-}
-export function reminderMessage(
-  item: ReturnType<typeof planReminders>[number],
-  origin: string,
-) {
-  const title =
-    item.reminder.phase === "overdue"
-      ? "Deadline passed"
-      : item.reminder.phase === "due"
-        ? "Due today"
-        : "Deadline approaching";
-  const text = `Hi ${item.name},\n\n${title}: ${item.milestone}\nProject: ${item.project}\nDue: ${item.reminder.due}\n\nOpen the project to share progress or ask for help:\n${origin}/projects/${encodeURIComponent(item.reminder.projectId)}\n\nManage deadline emails in My profile:\n${origin}/profile\n\nVenture Engineering Lab`;
-  return {
-    subject: `${title} · ${item.project}`.replace(/[\r\n]/g, " ").slice(0, 200),
-    text,
-  };
+  return result;
 }
 export async function sendReminder(
   item: ReturnType<typeof planReminders>[number],
 ) {
-  const config = emailConfiguration();
+  emailConfiguration();
   return sendGmail({
     to: item.email,
     id: item.reminder.id,
-    ...reminderMessage(item, config.origin),
+    subject: item.subject,
+    text: item.text,
   });
 }
 export async function deliverReminders(
@@ -160,12 +223,12 @@ export async function deliverReminders(
     send: (item: ReturnType<typeof planReminders>[number]) => Promise<string>;
   },
   now = new Date(),
-  timezone = "Asia/Kolkata",
+  admins: string[] = [],
 ) {
   let sent = 0,
     failed = 0,
     needsReview = 0;
-  for (const item of planReminders(store, now, timezone)) {
+  for (const item of planReminders(store, now, admins)) {
     // SMTP has no idempotency guarantee. An existing reservation may already
     // have reached Gmail, so never resend it automatically after an uncertain run.
     if (store.reminders?.some((r) => r.id === item.reminder.id)) {

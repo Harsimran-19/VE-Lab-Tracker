@@ -1,213 +1,149 @@
 "use client";
 import { useState } from "react";
-import { Send } from "lucide-react";
 import type { Workspace } from "@/lib/types";
-import { STATUSES } from "@/lib/types";
+import { shortDate } from "@/lib/format";
 import { Modal } from "./modal";
 import { mutate } from "./forms";
-import { HelpTip } from "./help-tip";
-
 export function EntryForm({
   data,
-  initialProjectId,
-  initialAssignmentId,
+  projectId,
   close,
   saved,
+  refresh,
 }: {
   data: Workspace;
-  initialProjectId?: string;
-  initialAssignmentId?: string;
+  projectId: string;
   close: () => void;
   saved: () => Promise<void>;
+  refresh: () => Promise<void>;
 }) {
-  const own = data.assignments.filter(
-    (a) => a.personId === data.identity.personId,
+  const [formWeek] = useState(data.weekStart);
+  const [expired, setExpired] = useState(false);
+  const existing = data.updates.find(
+    (u) =>
+      u.projectId === projectId &&
+      u.personId === data.identity.personId &&
+      u.weekStart === data.weekStart,
   );
-  const initial = own.find((a) => a.id === initialAssignmentId);
-  const [projectId, setProjectId] = useState(
-    initialProjectId ?? initial?.projectId ?? own[0]?.projectId ?? "",
-  );
-  const [assignmentId, setAssignmentId] = useState(
-    initial?.id ??
-      own.find((a) => a.projectId === (initialProjectId ?? own[0]?.projectId))
-        ?.id ??
-      "",
-  );
-  const [progress, setProgress] = useState("");
-  const [blockers, setBlockers] = useState("");
-  const [nextPlan, setNextPlan] = useState("");
-  const [status, setStatus] = useState<string>("On track");
-  const [entryId] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const relevant = own.filter((a) => a.projectId === projectId);
-  const previous = [...data.updates]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .find((u) => u.assignmentId === assignmentId);
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (data.preview) return;
+  const [progress, setProgress] = useState(existing?.progress ?? ""),
+    [nextPlan, setNextPlan] = useState(existing?.nextPlan ?? ""),
+    [needsHelp, setNeedsHelp] = useState(existing?.needsHelp === "true"),
+    [blockers, setBlockers] = useState(existing?.blockers ?? ""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [confirmed, setConfirmed] = useState(false);
+  const project = data.projects.find((p) => p.id === projectId)!;
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     setBusy(true);
     setError("");
     try {
       if (!confirmed) {
         await mutate("/api/entries", {
-          entryId,
           projectId,
-          newProjectName: "",
-          assignmentId,
+          weekStart: formWeek,
           progress,
-          blockers,
           nextPlan,
-          status,
+          needsHelp,
+          blockers: needsHelp ? blockers : "",
         });
         setConfirmed(true);
       }
       await saved();
       close();
-    } catch (error) {
-      setError((error as Error).message);
+    } catch (e) {
+      setError((e as Error).message);
+      if ((e as Error).message.includes("new reporting week")) {
+        setExpired(true);
+        await refresh().catch(() => {});
+      }
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Modal title="Weekly update" close={close}>
-      <form className="modal-body entry-form" onSubmit={submit}>
-        <p className="form-intro">
-          Tell the team what changed this week. Your name and date are added
-          automatically; everyone in the lab can read your update.
-        </p>
-        {data.preview && (
-          <p className="preview-form-note" id="preview-entry-note">
-            Read-only preview. Sign in with the member’s Google account to save
-            a real entry.
-          </p>
-        )}
-        <fieldset disabled={busy || confirmed} className="entry-fields">
+    <Modal
+      title={existing ? "Edit this week’s update" : "Write weekly update"}
+      close={close}
+    >
+      <form className="modal-body" onSubmit={submit}>
+        <div className="report-context">
+          <strong>{project.name}</strong>
+          <p>Week of {shortDate(data.weekStart)} · Shared with your team</p>
+        </div>
+        <fieldset
+          className="entry-fields"
+          disabled={busy || confirmed || expired}
+        >
           <label>
-            Project
-            <select
-              aria-label="Project"
-              required
-              value={projectId}
-              onChange={(e) => {
-                setProjectId(e.target.value);
-                setAssignmentId(
-                  own.find((a) => a.projectId === e.target.value)?.id ?? "",
-                );
-              }}
-            >
-              <option disabled value="">
-                Choose a project
-              </option>
-              {data.availableProjects
-                .filter((p) => own.some((a) => a.projectId === p.id))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          {relevant.length > 1 && (
-            <label>
-              Your work
-              <select
-                aria-label="Your work"
-                value={assignmentId}
-                onChange={(e) => setAssignmentId(e.target.value)}
-              >
-                {relevant.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.responsibility}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {previous?.nextPlan && (
-            <div className="previous-plan">
-              <strong>Previously, you planned to…</strong>
-              <p>{previous.nextPlan}</p>
-            </div>
-          )}
-          <label>
-            Progress made
+            What did you accomplish?
             <textarea
+              aria-label="What did you accomplish?"
               required
               rows={4}
               maxLength={4000}
-              placeholder="What did you work on or complete?"
+              placeholder="Summarize what moved forward this week."
               value={progress}
               onChange={(e) => setProgress(e.target.value)}
             />
           </label>
-          <fieldset className="status-field">
-            <legend>
-              Your progress status{" "}
-              <HelpTip label="Progress status">
-                On track means your work is moving forward. Blocked means you
-                need help. Done means this responsibility is complete.
-              </HelpTip>
-            </legend>
-            <div className="status-options">
-              {STATUSES.map((s) => (
-                <label key={s} className={status === s ? "selected" : ""}>
-                  <input
-                    type="radio"
-                    name="status"
-                    checked={status === s}
-                    onChange={() => setStatus(s)}
-                  />
-                  {s === "Blocked" ? "Need help" : s}
-                </label>
-              ))}
-            </div>
-          </fieldset>
           <label>
-            Blockers or help needed <span className="optional">Optional</span>
+            What will you do next?
             <textarea
+              aria-label="What will you do next?"
+              required
               rows={2}
               maxLength={2000}
-              value={blockers}
-              onChange={(e) => setBlockers(e.target.value)}
-            />
-          </label>
-          <label>
-            Next week’s plan <span className="optional">Optional</span>
-            <textarea
-              rows={2}
-              maxLength={2000}
+              placeholder="Your next concrete step."
               value={nextPlan}
               onChange={(e) => setNextPlan(e.target.value)}
             />
           </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={needsHelp}
+              onChange={(e) => setNeedsHelp(e.target.checked)}
+            />
+            I need help
+          </label>
+          {needsHelp && (
+            <label>
+              What is blocking you?
+              <textarea
+                aria-label="What is blocking you?"
+                required
+                rows={2}
+                maxLength={2000}
+                placeholder="Explain the problem or the help you need."
+                value={blockers}
+                onChange={(e) => setBlockers(e.target.value)}
+              />
+            </label>
+          )}
         </fieldset>
+        <p className="field-help">
+          Your name, date and reporting week are recorded automatically. Saving
+          again updates this week’s report.
+        </p>
         {error && (
           <p className="error" role="alert">
-            {confirmed ? "Your entry is saved. Refresh to see it. " : ""}
+            {confirmed ? "Your update is saved. " : ""}
             {error}
           </p>
         )}
         <div className="modal-actions">
-          <button className="button secondary" type="button" onClick={close}>
+          <button type="button" className="button secondary" onClick={close}>
             Cancel
           </button>
-          <button
-            className="button primary"
-            disabled={busy || Boolean(data.preview)}
-            aria-describedby={data.preview ? "preview-entry-note" : undefined}
-          >
-            <Send size={16} />
-            {data.preview
-              ? "Saving disabled in preview"
-              : busy
-                ? "Saving…"
-                : confirmed
-                  ? "Refresh workspace"
-                  : "Publish update"}
+          <button className="button primary" disabled={busy || expired}>
+            {busy
+              ? "Saving…"
+              : confirmed
+                ? "Refresh workspace"
+                : existing
+                  ? "Save changes"
+                  : "Submit update"}
           </button>
         </div>
       </form>

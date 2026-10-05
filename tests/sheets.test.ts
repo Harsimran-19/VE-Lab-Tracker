@@ -1,438 +1,232 @@
-import test, { after, before } from "node:test";
+import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { JWT } from "google-auth-library";
-import {
-  appendSheet,
-  initializeSheet,
-  readSheet,
-  replaceSheet,
-  SheetSetupError,
-  TABLES,
-} from "../lib/sheets";
-import { AppError } from "../lib/access";
-import type { Store, Update } from "../lib/types";
-import seed from "../lib/seed.json";
-
-const originalFetch = globalThis.fetch;
-const originalToken = JWT.prototype.getAccessToken;
-const originalEnv = {
-  GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-  GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY,
-};
+import { TABLES, readSheet, ensureTables, upsertSheet } from "../lib/sheets";
+import { fixture } from "./fixture";
+import { emptyStore } from "../lib/types";
+const originalFetch = globalThis.fetch,
+  originalToken = JWT.prototype.getAccessToken;
+const names = [
+    "GOOGLE_SHEET_ID",
+    "GOOGLE_SERVICE_ACCOUNT_EMAIL",
+    "GOOGLE_PRIVATE_KEY",
+  ],
+  saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
 before(() => {
-  process.env.GOOGLE_SHEET_ID = "unit-test-sheet";
-  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "unit-test@example.invalid";
-  process.env.GOOGLE_PRIVATE_KEY = "unit-test-placeholder-never-signed";
+  Object.assign(process.env, {
+    GOOGLE_SHEET_ID: "unit-test-sheet",
+    GOOGLE_SERVICE_ACCOUNT_EMAIL: "unit@test.invalid",
+    GOOGLE_PRIVATE_KEY: "not-a-real-key",
+  });
   JWT.prototype.getAccessToken = async () => ({ token: "unit-test-token" });
 });
 after(() => {
   globalThis.fetch = originalFetch;
   JWT.prototype.getAccessToken = originalToken;
-  for (const [key, value] of Object.entries(originalEnv)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+  for (const k of names) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
   }
 });
-function response(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-function metadata() {
+const response = (value: unknown, status = 200) =>
+  new Response(JSON.stringify(value), { status });
+const metadata = () => ({
+  sheets: Object.keys(TABLES).map((title) => ({ properties: { title } })),
+});
+function ranges() {
+  const s = fixture();
+  const records = [
+    s.projects,
+    s.people,
+    s.memberships,
+    s.updates,
+    [s.settings],
+    s.reminders,
+  ];
   return {
-    sheets: Object.keys(TABLES).map((title, sheetId) => ({
-      properties: { title, sheetId },
+    valueRanges: Object.entries(TABLES).map(([name, headers], i) => ({
+      values: [
+        [...headers],
+        ...records[i].map((row) =>
+          headers.map((h) =>
+            String((row as unknown as Record<string, string>)[h] ?? ""),
+          ),
+        ),
+      ],
     })),
   };
 }
-function valueRanges() {
-  const keys = {
-    Projects: "projects",
-    People: "people",
-    Assignments: "assignments",
-    Collaborators: "collaborators",
-    Updates: "updates",
-  } as const;
-  return {
-    valueRanges: (Object.keys(TABLES) as (keyof typeof TABLES)[]).map(
-      (table) => ({
-        values: [
-          [...TABLES[table]],
-          ...seed[keys[table]].map((row) =>
-            TABLES[table].map((key) =>
-              String((row as unknown as Record<string, string>)[key] ?? ""),
-            ),
-          ),
-        ],
-      }),
-    ),
+test("legacy tracker sheets return an empty new lab and are never imported", async () => {
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return response({
+      sheets: [
+        "Projects",
+        "People",
+        "Assignments",
+        "Updates",
+        "Profiles",
+        "Onboarding",
+      ].map((title) => ({ properties: { title } })),
+    });
   };
-}
-
-test("reads the normalized workbook and rejects renamed headers", async () => {
-  globalThis.fetch = async (input) =>
-    response(
-      String(input).includes("values:batchGet") ? valueRanges() : metadata(),
-    );
-  const store = await readSheet();
-  assert.equal(store.projects.length, 15);
-  assert.equal(store.assignments.length, 21);
-  assert.equal(store.updates.length, 0);
-  const wrong = valueRanges();
-  wrong.valueRanges[0].values[0][0] = "renamed";
-  globalThis.fetch = async (input) =>
-    response(String(input).includes("values:batchGet") ? wrong : metadata());
-  await assert.rejects(
-    readSheet(),
-    (e: unknown) => e instanceof AppError && e.status === 409,
-  );
+  assert.deepEqual(await readSheet(), emptyStore());
+  assert.equal(requests, 1);
 });
-test("a newly created or wholly empty spreadsheet can be initialized", async () => {
-  globalThis.fetch = async () =>
-    response({ sheets: [{ properties: { title: "Sheet1" } }] });
-  await assert.rejects(readSheet(), SheetSetupError);
+test("fresh schema reads project goals, self-signups and one shared reporting schedule", async () => {
   globalThis.fetch = async (input) =>
-    response(
-      String(input).includes("values:batchGet")
-        ? { valueRanges: Object.keys(TABLES).map(() => ({})) }
-        : metadata(),
-    );
-  await assert.rejects(readSheet(), SheetSetupError);
+    response(String(input).includes("values:batchGet") ? ranges() : metadata());
+  const s = await readSheet();
+  assert.equal(s.projects[0].goal, "Understand interview patterns");
+  assert.equal(s.people.length, 2);
+  assert.equal(s.memberships.length, 1);
+  assert.equal(s.settings.reportingTime, "18:00");
 });
-test("initialization never overwrites a populated existing project tab", async () => {
-  const writes: string[] = [];
+test("first setup creates only fresh tabs and headers, never old records or seed data", async () => {
+  const urls: string[] = [];
   globalThis.fetch = async (input, init) => {
-    if (init?.method) writes.push(init.method);
-    return response(
-      String(input).includes("/values/")
-        ? {
-            values: [
-              ["id", "name"],
-              ["existing", "Original research"],
-            ],
-          }
-        : metadata(),
-    );
-  };
-  await assert.rejects(
-    initializeSheet(seed as Store),
-    (e: unknown) => e instanceof AppError && e.status === 409,
-  );
-  assert.deepEqual(writes, []);
-});
-test("initialization creates five tabs, seeds data with RAW writes, and starts with no reports", async () => {
-  const calls: { url: string; body: Record<string, unknown> }[] = [];
-  let created = false;
-  globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    if (init?.body) {
-      calls.push({ url, body: JSON.parse(String(init.body)) });
-      if (url.endsWith(":batchUpdate") && !url.includes("/values"))
-        created = true;
-      return response({});
+    const url = decodeURIComponent(String(input));
+    urls.push(url);
+    if (!init?.method)
+      return response(
+        url.includes("?fields=")
+          ? { sheets: [{ properties: { title: "People" } }] }
+          : { values: [] },
+      );
+    const body = JSON.parse(String(init.body));
+    if (url.includes(":batchUpdate"))
+      assert.deepEqual(
+        body.requests.map(
+          (r: { addSheet: { properties: { title: string } } }) =>
+            r.addSheet.properties.title,
+        ),
+        Object.keys(TABLES),
+      );
+    else {
+      assert.equal(body.values.length, 1);
+      assert.equal(body.values[0][0], "id");
     }
-    if (url.includes("values:batchGet")) return response(valueRanges());
-    return response(
-      created
-        ? metadata()
-        : { sheets: [{ properties: { title: "Sheet1", sheetId: 0 } }] },
-    );
-  };
-  const store = await initializeSheet(seed as Store);
-  assert.equal(store.projects.length, 15);
-  assert.equal((calls[0].body.requests as unknown[]).length, 5);
-  assert.equal(calls[1].body.valueInputOption, "RAW");
-  const ranges = calls[1].body.data as { range: string; values: string[][] }[];
-  assert.equal(
-    ranges.find((r) => r.range === "'Updates'!A1")!.values.length,
-    1,
-  );
-});
-test("report append preserves text as RAW values and requests row insertion", async () => {
-  const update: Update = {
-    id: "test-report",
-    createdAt: "2026-10-04T12:00:00Z",
-    projectId: "P10",
-    assignmentId: "A016",
-    personId: "hars",
-    progress: '=IMPORTXML("example")',
-    blockers: "",
-    nextPlan: "",
-    status: "On track",
-  };
-  let requestUrl = "";
-  let requestBody: { values: string[][] } | undefined;
-  globalThis.fetch = async (input, init) => {
-    requestUrl = String(input);
-    requestBody = JSON.parse(String(init?.body));
     return response({});
   };
-  await appendSheet("Updates", update);
-  assert.ok(requestUrl.includes("valueInputOption=RAW"));
-  assert.ok(requestUrl.includes("insertDataOption=INSERT_ROWS"));
-  assert.equal(requestBody!.values[0][5], update.progress);
-});
-test("admin edits resolve the current row by ID instead of using client row numbers", async () => {
-  let writeUrl = "";
-  globalThis.fetch = async (input, init) => {
-    if (init?.method) {
-      writeUrl = String(input);
-      return response({});
-    }
-    return response({ values: [["id"], ["P99"], ["P01"]] });
-  };
-  await replaceSheet("Projects", seed.projects[0]);
-  assert.ok(decodeURIComponent(writeUrl).includes("'Projects'!A3:Z3"));
-  assert.ok(writeUrl.includes("valueInputOption=RAW"));
-});
-test("Google permission errors return actionable messages without upstream credential details", async () => {
-  globalThis.fetch = async () =>
-    response({ error: "upstream-private-details" }, 403);
-  await assert.rejects(
-    readSheet(),
-    (e: unknown) =>
-      e instanceof AppError &&
-      e.status === 503 &&
-      e.message.includes("share the Sheet") &&
-      !e.message.includes("upstream-private-details"),
-  );
-});
-test("a new member is appended to People with a stable ID, normalized email, and role", async () => {
-  const person = {
-    id: "new-person-id",
-    name: "New Member",
-    email: "new@example.com",
-    affiliation: "Lab",
-    role: "member" as const,
-  };
-  let requestUrl = "";
-  let values: string[][] = [];
-  globalThis.fetch = async (input, init) => {
-    requestUrl = String(input);
-    values = JSON.parse(String(init?.body)).values;
-    return response({});
-  };
-  await appendSheet("People", person);
-  assert.ok(decodeURIComponent(requestUrl).includes("'People'"));
-  assert.ok(requestUrl.includes("valueInputOption=RAW"));
-  assert.deepEqual(values, [TABLES.People.map((key) => person[key])]);
-});
-test("simultaneous Google signup rows converge without merging different accounts", async () => {
-  const ranges = valueRanges();
-  const person = [
-    "google-stable-id",
-    "New member",
-    "new@example.com",
-    "",
-    "member",
-  ];
-  ranges.valueRanges[1].values.push(person, [...person]);
-  globalThis.fetch = async (input) =>
-    response(String(input).includes("values:batchGet") ? ranges : metadata());
-  const store = await readSheet();
+  await ensureTables();
+  assert.equal(urls.filter((u) => u.includes("!A1")).length, 6);
   assert.equal(
-    store.people.filter((p) => p.email === "new@example.com").length,
-    1,
+    urls.some((u) => u.includes("'People'!")),
+    false,
   );
-  ranges.valueRanges[1].values.push([
-    "different-id",
-    "Different person",
-    "new@example.com",
-    "",
-    "member",
+});
+test("interrupted first setup repairs missing tabs without changing existing projects", async () => {
+  const project = ranges().valueRanges[0].values;
+  const tabs = new Map<string, string[][]>([
+    ["LabProjects", structuredClone(project)],
   ]);
-  await assert.rejects(
-    readSheet(),
-    (e: unknown) => e instanceof AppError && e.status === 409,
-  );
-});
-
-test("profile upgrades add only the optional tab and never write existing research rows", async () => {
-  const { upsertProfile, EXTRA_TABLES } = await import("../lib/sheets");
-  let created = false;
-  const writes: { url: string; body: Record<string, unknown> }[] = [];
+  let writes = 0;
   globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    if (init?.body) {
-      const body = JSON.parse(String(init.body));
-      writes.push({ url, body });
-      if (url.endsWith(":batchUpdate")) {
-        created = true;
+    const url = decodeURIComponent(String(input));
+    if (url.includes("?fields="))
+      return response({
+        sheets: [...tabs.keys()].map((title) => ({ properties: { title } })),
+      });
+    if (url.includes("values:batchGet"))
+      return response({
+        valueRanges: Object.keys(TABLES).map((title) => ({
+          values: tabs.get(title),
+        })),
+      });
+    if (url.includes(":batchUpdate")) {
+      writes++;
+      const body = JSON.parse(String(init?.body));
+      for (const item of body.requests) {
+        assert.notEqual(item.addSheet.properties.title, "LabProjects");
+        tabs.set(item.addSheet.properties.title, []);
       }
       return response({});
     }
-    if (url.includes("?fields="))
-      return response({
-        sheets: [
-          ...metadata().sheets,
-          ...(created
-            ? [{ properties: { title: "Profiles", sheetId: 5 } }]
-            : []),
-        ],
-      });
-    if (decodeURIComponent(url).includes("'Profiles'!A:A"))
-      return response({ values: [["id"]] });
-    return response({});
+    const title = url.match(/'([^']+)'!/)![1];
+    if (init?.method === "PUT") {
+      writes++;
+      assert.notEqual(title, "LabProjects");
+      tabs.set(title, JSON.parse(String(init.body)).values);
+      return response({});
+    }
+    return response({ values: tabs.get(title) });
   };
-  const profile = {
-    id: "hars",
-    position: "PhD",
-    expertise: "=literal skill",
-    bio: "Research",
-    reminders: "false",
-  };
-  await upsertProfile(profile);
-  assert.equal(writes.length, 3);
-  assert.deepEqual(writes[0].body.requests, [
-    {
-      addSheet: {
-        properties: {
-          title: "Profiles",
-          gridProperties: { frozenRowCount: 1 },
-        },
-      },
-    },
-  ]);
-  assert.deepEqual(writes[1].body.values, [[...EXTRA_TABLES.Profiles]]);
-  assert.ok(writes[2].url.includes("valueInputOption=RAW"));
-  assert.ok(
-    writes.every(
-      (w) =>
-        !decodeURIComponent(w.url).includes("'People'") &&
-        !decodeURIComponent(w.url).includes("'Projects'"),
-    ),
-  );
+  const recovered = await readSheet();
+  assert.equal(recovered.projects.length, 1);
+  assert.equal(recovered.people.length, 0);
+  assert.equal(recovered.settings.timezone, "Asia/Kolkata");
+  assert.deepEqual(tabs.get("LabProjects"), project);
+  assert.equal(writes, 6);
+  assert.deepEqual(await readSheet(), recovered);
+  assert.equal(writes, 6);
 });
-test("optional tabs with existing data are validated and malformed headers are never overwritten", async () => {
-  const { ensureExtraTable } = await import("../lib/sheets");
-  const writes: string[] = [];
+test("malformed populated headers are refused without overwriting data", async () => {
+  let writes = 0;
   globalThis.fetch = async (input, init) => {
-    if (init?.method) writes.push(init.method);
+    if (init?.method) writes++;
     return response(
       String(input).includes("?fields=")
-        ? { sheets: [{ properties: { title: "Profiles" } }] }
-        : { values: [["unrecognized"], ["valuable existing data"]] },
+        ? metadata()
+        : { values: [["unexpected"], ["existing-record"]] },
     );
   };
-  await assert.rejects(
-    ensureExtraTable("Profiles"),
-    (e: unknown) => e instanceof AppError && e.status === 409,
-  );
-  assert.deepEqual(writes, []);
+  await assert.rejects(ensureTables(true));
+  assert.equal(writes, 0);
 });
-test("shared read includes profiles and server-side reminder records from upgraded Sheets", async () => {
-  const { EXTRA_TABLES } = await import("../lib/sheets");
-  const ranges = valueRanges();
-  ranges.valueRanges.push({
-    values: [
-      [...EXTRA_TABLES.Profiles],
-      ["hars", "PhD", "LLMs", "Research", "false"],
-    ],
-  });
-  ranges.valueRanges.push({
-    values: [
-      [...EXTRA_TABLES.Reminders],
-      [
-        "reminder-1",
-        "hars",
-        "P10",
-        "2026-10-08",
-        "upcoming",
-        "2026-10-05T04:00:00Z",
-        "2026-10-05T04:00:00Z",
-        "provider-1",
-      ],
-    ],
-  });
-  ranges.valueRanges.splice(5, 0, {
-    values: [
-      [...EXTRA_TABLES.Onboarding],
-      ["hars", "2026-10-05T00:00:00Z", "hars", "linked", "member@example.com"],
-    ],
-  });
-  globalThis.fetch = async (input) =>
-    response(
-      String(input).includes("values:batchGet")
-        ? ranges
-        : {
-            sheets: [
-              ...metadata().sheets,
-              ...Object.keys(EXTRA_TABLES).map((title, i) => ({
-                properties: { title, sheetId: i + 5 },
-              })),
-            ],
-          },
-    );
-  const store = await readSheet();
-  assert.equal(store.onboarding![0].status, "linked");
-  assert.equal(store.profiles![0].expertise, "LLMs");
-  assert.equal(store.profiles![0].reminders, "false");
-  assert.equal(store.reminders![0].providerId, "provider-1");
-  assert.equal(store.projects.length, 15);
-});
-
-test("edits to duplicate signup and join rows retain the latest name, role and work status", async () => {
-  const ranges = valueRanges();
-  ranges.valueRanges[1].values.push(
-    ["google-stable", "Original name", "duplicate@example.com", "", "member"],
-    ["google-stable", "Updated name", "duplicate@example.com", "Lab", "admin"],
-  );
-  ranges.valueRanges[2].values.push(
-    ["join-stable", "P10", "google-stable", "Project work", "In progress", ""],
-    ["join-stable", "P10", "google-stable", "Project work", "Done", ""],
-  );
-  globalThis.fetch = async (input) =>
-    response(String(input).includes("values:batchGet") ? ranges : metadata());
-  const store = await readSheet();
-  assert.equal(
-    store.people.find((p) => p.id === "google-stable")!.name,
-    "Updated name",
-  );
-  assert.equal(
-    store.people.find((p) => p.id === "google-stable")!.role,
-    "admin",
-  );
-  assert.equal(
-    store.assignments.find((a) => a.id === "join-stable")!.status,
-    "Done",
-  );
-  ranges.valueRanges[2].values.push([
-    "join-stable",
-    "P10",
-    "different-person",
-    "Project work",
-    "Done",
-    "",
-  ]);
-  await assert.rejects(
-    readSheet(),
-    (e: unknown) => e instanceof AppError && e.status === 409,
-  );
-});
-
-test("imported work moves every duplicate row while retaining responsibility IDs", async () => {
-  const urls: string[] = [];
+test("upserts use RAW input, update the last matching ID and preserve multiline reports", async () => {
+  let written = false;
   globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    urls.push(url);
-    if (url.includes(encodeURIComponent("'Assignments'!A:A")))
-      return response({ values: [["id"], ["A004"], ["other"], ["A004"]] });
-    const values = JSON.parse(String(init!.body)).values;
-    assert.equal(values[0][0], "A004");
-    assert.equal(values[0][2], "new-member");
+    const url = decodeURIComponent(String(input));
+    if (url.includes("?fields=")) return response(metadata());
+    if (!init?.method)
+      return response({
+        values: [["id"], ["report-id"], ["other"], ["report-id"]],
+      });
+    assert.equal(init.method, "PUT");
+    assert.ok(url.includes("'LabReports'!A4:Z4?valueInputOption=RAW"));
+    const body = JSON.parse(String(init.body));
+    assert.equal(body.values[0][6], "=literal formula\nSecond line");
+    written = true;
     return response({});
   };
-  await replaceSheet(
-    "Assignments",
-    {
-      ...seed.assignments.find((a) => a.id === "A004")!,
-      personId: "new-member",
-    },
-    true,
+  await upsertSheet("LabReports", {
+    id: "report-id",
+    personId: "member",
+    projectId: "project",
+    weekStart: "2026-10-05",
+    createdAt: "2026-10-05T00:00:00Z",
+    updatedAt: "2026-10-05T00:00:00Z",
+    progress: "=literal formula\nSecond line",
+    nextPlan: "Next",
+    needsHelp: "false",
+    blockers: "",
+  });
+  assert.equal(written, true);
+});
+test("concurrent identical signup rows converge but conflicting Google emails are rejected", async () => {
+  const data = ranges();
+  data.valueRanges[1].values.push([...data.valueRanges[1].values[2]]);
+  globalThis.fetch = async (input) =>
+    response(String(input).includes("values:batchGet") ? data : metadata());
+  assert.equal((await readSheet()).people.length, 2);
+  data.valueRanges[1].values.push([
+    "different-id",
+    "Different",
+    "member@example.com",
+    "true",
+    "true",
+  ]);
+  await assert.rejects(readSheet());
+});
+test("Google permission failures are actionable and do not expose upstream credentials", async () => {
+  globalThis.fetch = async () =>
+    response({ privateCredential: "never-return-this" }, 403);
+  await assert.rejects(
+    readSheet(),
+    (e) =>
+      e instanceof Error &&
+      e.message.includes("service account") &&
+      !e.message.includes("never-return"),
   );
-  assert.equal(urls.length, 3);
-  assert.ok(urls[1].includes(encodeURIComponent("'Assignments'!A2:Z2")));
-  assert.ok(urls[2].includes(encodeURIComponent("'Assignments'!A4:Z4")));
 });

@@ -2,14 +2,9 @@ import { Login } from "./login";
 import { LabApp } from "./lab-app";
 import { authorizedContext, loginIdentity } from "@/lib/auth";
 import { adminEmails, isDemo, missingConfig } from "@/lib/config";
-import { workspaceFor, memberPreview, AppError } from "@/lib/access";
+import { workspaceFor, AppError } from "@/lib/access";
 import { notFound } from "next/navigation";
-export type Screen =
-  | "dashboard"
-  | "projects"
-  | "project"
-  | "people"
-  | "profile";
+export type Screen = "dashboard" | "projects" | "project" | "account";
 function ConnectionError({ error }: { error: unknown }) {
   return (
     <main className="service-error">
@@ -35,12 +30,10 @@ export async function WorkspacePage({
   screen,
   projectId,
   error,
-  preview,
 }: {
   screen: Screen;
   projectId?: string;
   error?: string;
-  preview?: string;
 }) {
   const missing = isDemo() ? [] : missingConfig();
   const callbackUrl =
@@ -61,9 +54,7 @@ export async function WorkspacePage({
     notFound();
   try {
     const { identity, store } = context;
-    const initial = preview
-      ? memberPreview(store, identity, preview, isDemo(), adminEmails())
-      : workspaceFor(store, identity, isDemo(), adminEmails());
+    const initial = workspaceFor(store, identity, isDemo());
     return (
       <LabApp
         key={`${screen}-${projectId ?? ""}-${initial.identity.personId}`}

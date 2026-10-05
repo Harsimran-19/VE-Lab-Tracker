@@ -6,6 +6,8 @@ import { adminEmails, isDemo } from "@/lib/config";
 export async function GET() {
   try {
     const { identity, store } = await authorizedContext();
-    return NextResponse.json(workspaceFor(store, identity, isDemo(), adminEmails()));
-  } catch (e) { return apiError(e); }
+    return NextResponse.json(workspaceFor(store, identity, isDemo()));
+  } catch (e) {
+    return apiError(e);
+  }
 }
