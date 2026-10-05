@@ -91,3 +91,16 @@ export const entrySchema = z
       path: ["projectId"],
     },
   );
+
+export const onboardingSchema = z
+  .object({
+    name: text(150).min(1, "Enter your name."),
+    position: z.union([z.literal(""), z.enum(POSITIONS)]),
+    expertise: text(1000),
+    rosterId: text(100),
+    projectIds: z.array(text(50).min(1)).max(30),
+  })
+  .strict();
+export const rosterLinkSchema = z
+  .object({ id: text(100).min(1), approve: z.boolean() })
+  .strict();

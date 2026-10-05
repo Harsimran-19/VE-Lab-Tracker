@@ -94,6 +94,13 @@ export interface Reminder {
   sentAt: string;
   providerId: string;
 }
+export interface Onboarding {
+  id: string;
+  completedAt: string;
+  rosterId: string;
+  status: string;
+  requesterEmail: string;
+}
 export interface Store {
   projects: Project[];
   people: Person[];
@@ -102,6 +109,7 @@ export interface Store {
   updates: Update[];
   profiles?: Profile[];
   reminders?: Reminder[];
+  onboarding?: Onboarding[];
 }
 export interface Identity {
   email: string;
@@ -113,6 +121,7 @@ export interface Workspace extends Store {
   identity: Identity;
   demo: boolean;
   needsSetup: boolean;
+  needsOnboarding: boolean;
   availableProjects: Pick<Project, "id" | "name">[];
   protectedPersonIds?: string[];
   preview?: { adminName: string };

@@ -69,39 +69,29 @@ export function ProjectEditor({
             onChange={(e) => field("title", e.target.value)}
           />
         </label>
+        <label>
+          Research stage
+          <select
+            value={form.stage}
+            onChange={(e) => field("stage", e.target.value)}
+          >
+            {STAGES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+          <span className="field-help">
+            The phase of the whole research project, separate from a member’s
+            weekly status.
+          </span>
+        </label>
         <div className="form-grid">
           <label>
-            Research stage
-            <select
-              value={form.stage}
-              onChange={(e) => field("stage", e.target.value)}
-            >
-              {STAGES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Priority
-            <select
-              value={form.priority}
-              onChange={(e) => field("priority", e.target.value)}
-            >
-              {PRIORITIES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Publication status
-            <select
-              value={form.pipeline}
-              onChange={(e) => field("pipeline", e.target.value)}
-            >
-              {PIPELINES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+            Next milestone
+            <input
+              maxLength={1000}
+              value={form.milestone}
+              onChange={(e) => field("milestone", e.target.value)}
+            />
           </label>
           <label>
             Milestone due date
@@ -112,50 +102,71 @@ export function ProjectEditor({
             />
           </label>
         </div>
-        <label>
-          Next milestone
-          <input
-            maxLength={1000}
-            value={form.milestone}
-            onChange={(e) => field("milestone", e.target.value)}
-          />
-        </label>
-        <div className="form-grid">
-          <label>
-            Target journal
-            <input
-              maxLength={300}
-              value={form.journal}
-              onChange={(e) => field("journal", e.target.value)}
-            />
-          </label>
-          <label>
-            Target conference
-            <input
-              maxLength={300}
-              value={form.conference}
-              onChange={(e) => field("conference", e.target.value)}
-            />
-          </label>
-        </div>
-        <label>
-          Methods
-          <textarea
-            maxLength={2000}
-            rows={2}
-            value={form.methods}
-            onChange={(e) => field("methods", e.target.value)}
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            maxLength={4000}
-            rows={3}
-            value={form.notes}
-            onChange={(e) => field("notes", e.target.value)}
-          />
-        </label>
+        <details className="advanced-fields">
+          <summary>Publication, methods and notes · Optional</summary>
+          <div>
+            <div className="form-grid">
+              <label>
+                Priority
+                <select
+                  value={form.priority}
+                  onChange={(e) => field("priority", e.target.value)}
+                >
+                  {PRIORITIES.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Publication status
+                <select
+                  value={form.pipeline}
+                  onChange={(e) => field("pipeline", e.target.value)}
+                >
+                  {PIPELINES.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="form-grid">
+              <label>
+                Target journal
+                <input
+                  maxLength={300}
+                  value={form.journal}
+                  onChange={(e) => field("journal", e.target.value)}
+                />
+              </label>
+              <label>
+                Target conference
+                <input
+                  maxLength={300}
+                  value={form.conference}
+                  onChange={(e) => field("conference", e.target.value)}
+                />
+              </label>
+            </div>
+            <label>
+              Methods
+              <textarea
+                rows={2}
+                maxLength={2000}
+                value={form.methods}
+                onChange={(e) => field("methods", e.target.value)}
+              />
+            </label>
+            <label>
+              Notes
+              <textarea
+                rows={3}
+                maxLength={4000}
+                value={form.notes}
+                onChange={(e) => field("notes", e.target.value)}
+              />
+            </label>
+          </div>
+        </details>
         {error && (
           <p className="error" role="alert">
             {error}

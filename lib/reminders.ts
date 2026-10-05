@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { AppError } from "./access";
+import { gmailConfiguration, sendGmail } from "./mail";
 import { dateInZone, dayDifference } from "./calendar";
 import type { Reminder, Store } from "./types";
 
@@ -19,28 +20,13 @@ export function requireCron(
     throw new AppError("Unauthorized.", 401);
 }
 export function emailConfiguration() {
-  const missing = [
-    "RESEND_API_KEY",
-    "EMAIL_FROM",
-    "CRON_SECRET",
-    "NEXTAUTH_URL",
-  ].filter((k) => !process.env[k]?.trim());
-  if (missing.length)
-    throw new AppError(
-      `Configure ${missing.join(", ")} to enable deadline emails.`,
-      503,
-    );
-  const origin = new URL(process.env.NEXTAUTH_URL!);
+  gmailConfiguration();
+  if (!process.env.NEXTAUTH_URL)
+    throw new AppError("Set the website URL before enabling reminders.", 503);
+  const origin = new URL(process.env.NEXTAUTH_URL);
   if (origin.protocol !== "https:" && process.env.NODE_ENV === "production")
-    throw new AppError(
-      "Use the HTTPS deployment URL for deadline emails.",
-      503,
-    );
-  return {
-    key: process.env.RESEND_API_KEY!,
-    from: process.env.EMAIL_FROM!,
-    origin: origin.origin,
-  };
+    throw new AppError("Use the HTTPS website URL for reminders.", 503);
+  return { origin: origin.origin };
 }
 export function planReminders(
   store: Store,
@@ -160,33 +146,11 @@ export async function sendReminder(
   item: ReturnType<typeof planReminders>[number],
 ) {
   const config = emailConfiguration();
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.key}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": item.reminder.id,
-    },
-    body: JSON.stringify({
-      from: config.from,
-      to: [item.email],
-      ...reminderMessage(item, config.origin),
-    }),
-    signal: AbortSignal.timeout(15000),
-    cache: "no-store",
+  return sendGmail({
+    to: item.email,
+    id: item.reminder.id,
+    ...reminderMessage(item, config.origin),
   });
-  if (!response.ok)
-    throw new AppError(
-      "Email delivery failed. Check the verified sender, Resend API key and sending limits.",
-      503,
-    );
-  const body = await response.json();
-  if (typeof body.id !== "string" || !body.id)
-    throw new AppError(
-      "The email provider did not confirm delivery acceptance.",
-      503,
-    );
-  return body.id as string;
 }
 export async function deliverReminders(
   store: Store,
@@ -202,12 +166,9 @@ export async function deliverReminders(
     failed = 0,
     needsReview = 0;
   for (const item of planReminders(store, now, timezone)) {
-    // Resend guarantees idempotency for 24h. Hold older uncertain deliveries
-    // for review instead of risking another email after that protection ends.
-    if (
-      !item.reminder.sentAt &&
-      now.getTime() - Date.parse(item.reminder.createdAt) >= 23 * 3600000
-    ) {
+    // SMTP has no idempotency guarantee. An existing reservation may already
+    // have reached Gmail, so never resend it automatically after an uncertain run.
+    if (store.reminders?.some((r) => r.id === item.reminder.id)) {
       needsReview++;
       continue;
     }

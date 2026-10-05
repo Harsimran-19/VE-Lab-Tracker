@@ -7,9 +7,11 @@ import {
   readSheet,
   replaceSheet,
   upsertProfile,
+  upsertExtra,
   ensureExtraTable,
 } from "./sheets";
 import type {
+  Onboarding,
   Assignment,
   Person,
   Profile,
@@ -24,6 +26,15 @@ function demoStore(): Store {
   if (!globals.veLabDemo) {
     globals.veLabDemo = structuredClone(seed) as Store;
     globals.veLabDemo.profiles = [];
+    globals.veLabDemo.onboarding = [
+      {
+        id: "hars",
+        completedAt: new Date().toISOString(),
+        rosterId: "hars",
+        status: "linked",
+        requesterEmail: "hars@demo.invalid",
+      },
+    ];
     globals.veLabDemo.reminders = [];
     const now = Date.now();
     const examples = [
@@ -106,7 +117,11 @@ export async function addPerson(person: Person) {
   }
   return appendSheet("People", person);
 }
-export async function saveAssignment(assignment: Assignment, exists: boolean) {
+export async function saveAssignment(
+  assignment: Assignment,
+  exists: boolean,
+  reconcileDuplicates = false,
+) {
   if (isDemo()) {
     if (exists)
       demoStore().assignments = demoStore().assignments.map((a) =>
@@ -117,7 +132,7 @@ export async function saveAssignment(assignment: Assignment, exists: boolean) {
     return;
   }
   return exists
-    ? replaceSheet("Assignments", assignment)
+    ? replaceSheet("Assignments", assignment, reconcileDuplicates)
     : appendSheet("Assignments", assignment);
 }
 export async function initializeStore() {
@@ -152,4 +167,25 @@ export async function saveReminder(reminder: Reminder) {
     return;
   }
   return replaceSheet("Reminders", reminder);
+}
+
+export async function saveOnboarding(record: Onboarding) {
+  if (isDemo()) {
+    const s = demoStore();
+    s.onboarding = [
+      ...(s.onboarding ?? []).filter((v) => v.id !== record.id),
+      record,
+    ];
+    return;
+  }
+  return upsertExtra("Onboarding", record);
+}
+export async function saveUpdate(update: Update) {
+  if (isDemo()) {
+    demoStore().updates = demoStore().updates.map((u) =>
+      u.id === update.id ? update : u,
+    );
+    return;
+  }
+  return replaceSheet("Updates", update, true);
 }

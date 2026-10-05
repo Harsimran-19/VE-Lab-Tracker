@@ -4,11 +4,9 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import {
   ArrowRight,
-  ArrowUpRight,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  CircleHelp,
   Copy,
   Eye,
   FlaskConical,
@@ -18,10 +16,9 @@ import {
   Mail,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
+  UserRound,
   Users,
-  X,
 } from "lucide-react";
 import type { Person, Project, Update, Workspace } from "@/lib/types";
 import { STAGES } from "@/lib/types";
@@ -36,8 +33,9 @@ import { AssignmentList, mutate, PersonEditor, ProjectEditor } from "./forms";
 import { EntryForm } from "./entry-form";
 import { ProfileForm } from "./profile-form";
 import { Modal } from "./modal";
+import { Welcome } from "./welcome";
+import { HelpTip } from "./help-tip";
 import type { Screen } from "./workspace-page";
-
 const subscribeReady = () => () => {};
 function Avatar({ name }: { name: string }) {
   return <span className="avatar">{initials(name)}</span>;
@@ -47,23 +45,8 @@ function Status({ value }: { value: string }) {
     <span
       className={`report-status ${value === "Blocked" ? "blocked" : value === "Done" ? "done" : ""}`}
     >
-      {value}
+      {value === "Blocked" ? "Needs help" : value}
     </span>
-  );
-}
-function Empty({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="empty-state">
-      <FolderKanban size={26} />
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </div>
   );
 }
 const blankProject = (id: string): Project => ({
@@ -80,7 +63,6 @@ const blankProject = (id: string): Project => ({
   due: "",
   notes: "",
 });
-
 export function LabApp({
   initial,
   screen = "dashboard",
@@ -97,19 +79,22 @@ export function LabApp({
   );
   const [data, setData] = useState(initial),
     [search, setSearch] = useState(""),
-    [stageFilter, setStageFilter] = useState(""),
-    [onlyMine, setOnlyMine] = useState(false);
-  const [personFilter, setPersonFilter] = useState(""),
-    [statusFilter, setStatusFilter] = useState(""),
+    [onlyMine, setOnlyMine] = useState(
+      initial.identity.role !== "admin" &&
+        initial.assignments.some(
+          (a) => a.personId === initial.identity.personId,
+        ),
+    ),
+    [tab, setTab] = useState("updates"),
+    [personFilter, setPersonFilter] = useState(""),
     [limit, setLimit] = useState(12);
   const [entry, setEntry] = useState<{ projectId?: string } | null>(null),
     [editing, setEditing] = useState<{
       project: Project;
       create?: boolean;
-    } | null>(null);
-  const [person, setPerson] = useState<Person | null>(null),
-    [selectedPerson, setSelectedPerson] = useState<Person | null>(null),
-    [tab, setTab] = useState("updates");
+    } | null>(null),
+    [person, setPerson] = useState<Person | null>(null),
+    [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -122,18 +107,16 @@ export function LabApp({
   const projectHref = (id: string) =>
     href(`/projects/${encodeURIComponent(id)}`);
   const own = data.assignments.filter(
-    (a) => a.personId === data.identity.personId,
-  );
-  const ownIds = new Set(own.map((a) => a.projectId)),
+      (a) => a.personId === data.identity.personId,
+    ),
+    ownIds = new Set(own.map((a) => a.projectId)),
     myProjects = data.projects.filter((p) => ownIds.has(p.id));
   const sorted = [...data.updates].sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt),
   );
-  const latest = latestByAssignment(data.updates),
-    blocked = latest.filter(
-      (u) =>
-        u.status !== "Done" && (u.status === "Blocked" || u.blockers.trim()),
-    );
+  const blocked = latestByAssignment(data.updates).filter(
+    (u) => u.status !== "Done" && (u.status === "Blocked" || u.blockers.trim()),
+  );
   const reported = (id: string, memberId: string) =>
     data.updates.some(
       (u) =>
@@ -141,28 +124,23 @@ export function LabApp({
         u.personId === memberId &&
         reportedThisWeek(u.createdAt, data.weekStart, data.timezone),
     );
-  const activeOwnIds = new Set(
-    own.filter((a) => a.status !== "Done").map((a) => a.projectId),
-  );
-  const dueUpdates = myProjects.filter(
-    (p) => activeOwnIds.has(p.id) && !reported(p.id, data.identity.personId),
-  );
   const pairs = data.assignments
-    .filter((a) => a.status !== "Done")
-    .filter(
-      (a, i, rows) =>
-        rows.findIndex(
-          (r) => r.projectId === a.projectId && r.personId === a.personId,
-        ) === i,
-    );
-  const gaps = pairs.filter((a) => !reported(a.projectId, a.personId));
+      .filter((a) => a.status !== "Done")
+      .filter(
+        (a, i, rows) =>
+          rows.findIndex(
+            (r) => r.projectId === a.projectId && r.personId === a.personId,
+          ) === i,
+      ),
+    gaps = pairs.filter((a) => !reported(a.projectId, a.personId));
   const deadlines = [
     ...data.projects
       .filter(
         (p) =>
           p.due &&
           p.pipeline !== "Accepted" &&
-          (admin || activeOwnIds.has(p.id)),
+          (admin ||
+            own.some((a) => a.projectId === p.id && a.status !== "Done")),
       )
       .map((p) => ({
         id: `p-${p.id}`,
@@ -178,7 +156,7 @@ export function LabApp({
           (admin || a.personId === data.identity.personId),
       )
       .map((a) => ({
-        id: `a-${a.id}`,
+        id: a.id,
         projectId: a.projectId,
         title: a.responsibility,
         due: a.due,
@@ -186,33 +164,29 @@ export function LabApp({
   ]
     .filter((d) => dayDifference(d.due, data.today) <= 7)
     .sort((a, b) => a.due.localeCompare(b.due));
-  const chosen = data.projects.find((p) => p.id === projectId);
-  const filteredProjects = data.projects.filter(
-    (p) =>
-      (!onlyMine || ownIds.has(p.id)) &&
-      (!stageFilter || p.stage === stageFilter) &&
-      `${p.name} ${p.title} ${p.methods}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const chosen = data.projects.find((p) => p.id === projectId),
+    filteredProjects = data.projects.filter(
+      (p) =>
+        (!onlyMine || ownIds.has(p.id)) &&
+        `${p.id} ${p.name} ${p.title}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    );
   const filteredPeople = data.people.filter((p) => {
     const profile = data.profiles?.find((r) => r.id === p.id);
-    return `${p.name} ${p.affiliation} ${profile?.position ?? ""} ${profile?.expertise ?? ""} ${profile?.bio ?? ""}`
+    return `${p.name} ${p.affiliation} ${profile?.expertise ?? ""} ${profile?.position ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase());
   });
   const projectUpdates = sorted.filter(
     (u) =>
       u.projectId === projectId &&
-      (!personFilter || u.personId === personFilter) &&
-      (!statusFilter ||
-        (statusFilter === "Blocked"
-          ? u.status === "Blocked" || Boolean(u.blockers)
-          : u.status === statusFilter)) &&
-      `${u.progress} ${u.blockers} ${data.people.find((p) => p.id === u.personId)?.name}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+      (!personFilter || u.personId === personFilter),
   );
+  const pending = data.onboarding?.filter((r) => r.status === "pending") ?? [],
+    connection = data.onboarding?.find(
+      (r) => r.id === data.identity.personId && r.status === "pending",
+    );
   async function refresh() {
     const response = await fetch(
       readOnly
@@ -235,143 +209,97 @@ export function LabApp({
       setBusy(false);
     }
   }
+  async function join(id: string) {
+    await action(async () => {
+      await mutate("/api/join", { projectId: id });
+      await refresh();
+      setNotice("Project joined. You can now share weekly progress.");
+    });
+  }
   async function copyLink() {
     await action(async () => {
       await navigator.clipboard.writeText(window.location.origin);
       setNotice("Invite link copied. Members join with their Google account.");
     });
   }
-  async function join(id: string) {
-    await action(async () => {
-      await mutate("/api/join", { projectId: id });
-      await refresh();
-      setNotice("You joined this project. You can now share weekly updates.");
-    });
-  }
-  function updateCard(update: Update) {
-    const author = data.people.find((p) => p.id === update.personId);
+  function updateCard(u: Update) {
+    const author = data.people.find((p) => p.id === u.personId);
     return (
-      <article className="update-card" key={update.id}>
+      <article className="update-card" key={u.id}>
         <div className="update-card-head">
           <Avatar name={author?.name ?? "Member"} />
           <div>
             <strong>{author?.name ?? "Member"}</strong>
-            <p>{reportDate(update.createdAt, data.timezone)}</p>
+            <p>{reportDate(u.createdAt, data.timezone)}</p>
           </div>
-          <Status value={update.status} />
+          <Status value={u.status} />
         </div>
-        <p className="update-progress">{update.progress}</p>
-        {update.blockers && (
+        <p className="update-progress">{u.progress}</p>
+        {u.blockers && (
           <div className="blocker">
-            <CircleHelp size={16} />
-            <p>{update.blockers}</p>
+            <strong>Help needed</strong>
+            <p>{u.blockers}</p>
           </div>
         )}
-        {update.nextPlan && (
+        {u.nextPlan && (
           <p className="next-plan">
-            <strong>Next week:</strong> {update.nextPlan}
+            <strong>Next week:</strong> {u.nextPlan}
           </p>
         )}
       </article>
     );
   }
-  function projectCard(project: Project) {
-    const members = data.people.filter((p) =>
-      data.assignments.some(
-        (a) => a.projectId === project.id && a.personId === p.id,
-      ),
+  function projectCard(p: Project) {
+    const members = new Set(
+      data.assignments
+        .filter((a) => a.projectId === p.id)
+        .map((a) => a.personId),
     );
-    const last = sorted.find((u) => u.projectId === project.id);
-    const activeMembers = members.filter((p) =>
-      data.assignments.some(
-        (a) =>
-          a.projectId === project.id &&
-          a.personId === p.id &&
-          a.status !== "Done",
-      ),
-    );
-    const shared = activeMembers.filter((p) =>
-      reported(project.id, p.id),
-    ).length;
-    const help = blocked.filter((u) => u.projectId === project.id).length;
     return (
       <Link
         prefetch={false}
-        href={projectHref(project.id)}
+        href={projectHref(p.id)}
         className="research-card"
-        key={project.id}
+        key={p.id}
       >
-        <div className="research-card-top">
-          <span className="project-code">
-            {project.id.startsWith("P-") ? "RESEARCH" : project.id}
-          </span>
-          <span className="stage-pill">{project.stage}</span>
-        </div>
-        <h2>{project.name}</h2>
-        <p className="project-description">
-          {project.title ||
-            project.milestone ||
-            "Open the workspace to see research details and team progress."}
-        </p>
-        <div className="project-team">
-          <div className="avatar-stack">
-            {members.slice(0, 3).map((p) => (
-              <Avatar key={p.id} name={p.name} />
-            ))}
+        <span className="project-symbol">
+          <FolderKanban size={23} />
+        </span>
+        <div className="project-summary">
+          <div className="project-card-title">
+            <span className="project-code">
+              {p.id.startsWith("P-") ? "PROJECT" : p.id}
+            </span>
+            <h2>{p.name}</h2>
+            {ownIds.has(p.id) && <span className="joined-label">Joined</span>}
           </div>
-          <span>
-            {members.length
-              ? `${members.length} ${members.length === 1 ? "member" : "members"}`
-              : "Open to collaborators"}
-          </span>
-          {ownIds.has(project.id) && (
-            <span className="joined-label">Joined</span>
-          )}
+          <p>
+            {p.title || p.milestone || "View this project’s progress and team."}
+          </p>
+          <small>
+            {members.size} {members.size === 1 ? "member" : "members"}
+            {p.due ? ` · Next deadline ${shortDate(p.due)}` : ""}
+          </small>
         </div>
-        <div className="project-weekly-health">
-          <span>
-            {activeMembers.length
-              ? `${shared}/${activeMembers.length} shared this week`
-              : "No active memberships"}
-          </span>
-          {help > 0 && <span className="help-label">{help} need help</span>}
-        </div>
-        <div className="research-card-bottom">
-          <span>
-            {last
-              ? `Updated ${shortDate(last.createdAt)}`
-              : "No weekly updates yet"}
-          </span>
-          <ArrowUpRight size={17} />
-        </div>
+        <span className="stage-pill">{p.stage}</span>
+        <ChevronRight size={19} />
       </Link>
     );
   }
+  if (data.needsOnboarding && !readOnly)
+    return <Welcome data={data} saved={refresh} />;
   const heading =
     screen === "dashboard"
       ? admin
-        ? "Lab dashboard"
-        : "My dashboard"
+        ? "Lab overview"
+        : "My work"
       : screen === "projects"
         ? "Projects"
         : screen === "people"
-          ? "People"
+          ? "Teammates"
           : screen === "profile"
             ? "My profile"
             : chosen?.name;
-  const subtitle =
-    screen === "dashboard"
-      ? admin
-        ? "A clear view of progress, reporting gaps and work that needs attention."
-        : "Your research, this week’s updates and upcoming deadlines."
-      : screen === "projects"
-        ? "Explore the lab’s research. Open a project to see the team’s progress or join in."
-        : screen === "people"
-          ? "Find the right collaborator by expertise, research interests or project."
-          : screen === "profile"
-            ? "Introduce yourself to the lab and choose your reminder preferences."
-            : chosen?.title ||
-              "A shared workspace for research and weekly progress.";
   return (
     <div className="lab-shell">
       <a className="skip-link" href="#workspace-main">
@@ -384,13 +312,13 @@ export function LabApp({
           </span>
           <span>
             VE <strong>Lab</strong>
-            <small>RESEARCH WORKSPACE</small>
+            <small>Venture Engineering Lab</small>
           </span>
         </Link>
         <nav aria-label="Main navigation">
           {[
             {
-              label: "Dashboard",
+              label: admin ? "Lab overview" : "My work",
               path: "/",
               icon: LayoutDashboard,
               active: screen === "dashboard",
@@ -402,1046 +330,1014 @@ export function LabApp({
               active: screen === "projects" || screen === "project",
             },
             {
-              label: "People",
+              label: "Teammates",
               path: "/people",
               icon: Users,
               active: screen === "people",
             },
+            {
+              label: "My profile",
+              path: "/profile",
+              icon: UserRound,
+              active: screen === "profile",
+            },
           ].map((item) => (
             <Link
-              key={item.path}
               prefetch={false}
+              key={item.path}
               href={href(item.path)}
               className={item.active ? "active" : ""}
               aria-current={item.active ? "page" : undefined}
             >
-              <item.icon size={17} />
+              <item.icon size={19} />
               {item.label}
             </Link>
           ))}
         </nav>
+        <div className="sidebar-help">
+          <strong>Your weekly routine</strong>
+          <p>
+            Open a project, share progress, and let your team know if you need
+            help.
+          </p>
+        </div>
         <div className="lab-account">
-          <button
-            className="icon-button"
-            aria-label="Refresh workspace"
-            disabled={busy || !ready}
-            onClick={() => action(refresh)}
-          >
-            <RefreshCw size={17} />
-          </button>
-          <details className="account-menu">
-            <summary aria-label="Account menu">
-              <Avatar name={data.identity.name} />
-              <span>
-                {data.people.find((p) => p.id === data.identity.personId)
-                  ?.name || data.identity.name}
-                <small>{admin ? "Administrator" : "Lab member"}</small>
-              </span>
-            </summary>
-            <div className="account-dropdown">
-              <Link href={href("/profile")}>My profile</Link>
-              {!data.demo && !readOnly && (
-                <button onClick={() => signOut({ callbackUrl: "/" })}>
-                  <LogOut size={15} />
-                  Sign out
-                </button>
-              )}
-            </div>
-          </details>
+          <Avatar name={data.identity.name} />
+          <div>
+            <strong>
+              {data.people.find((p) => p.id === data.identity.personId)?.name ??
+                data.identity.name}
+            </strong>
+            <small>{admin ? "Administrator" : "Lab member"}</small>
+          </div>
+          {!data.demo && !readOnly && (
+            <button
+              className="icon-button"
+              aria-label="Sign out"
+              onClick={() => signOut({ callbackUrl: "/" })}
+            >
+              <LogOut size={18} />
+            </button>
+          )}
         </div>
       </header>
-      {data.demo && (
-        <div className="demo-banner">
-          <span>
-            <strong>Sample workspace</strong> · Local data resets on server
-            restart. Emails are disabled.
-          </span>
-          {!readOnly && (
-            <div className="sample-actions">
-              <form action="/api/demo" method="post">
-                <input
-                  type="hidden"
-                  name="view"
-                  value={admin ? "member" : "admin"}
-                />
-                <button>
-                  {admin ? "Member view" : "Admin view"}
-                  <ArrowRight size={14} />
-                </button>
-              </form>
-              {admin && (
+      <div className="workspace-content">
+        {data.demo && (
+          <div className="demo-banner">
+            <span>
+              <strong>Sample workspace</strong> · Emails are simulated.
+            </span>
+            {!readOnly && (
+              <div className="sample-actions">
                 <form action="/api/demo" method="post">
-                  <input type="hidden" name="view" value="new" />
+                  <input
+                    type="hidden"
+                    name="view"
+                    value={admin ? "member" : "admin"}
+                  />
                   <button>
-                    New member view
+                    {admin ? "Member view" : "Admin view"}
                     <ArrowRight size={14} />
                   </button>
                 </form>
+                {admin && (
+                  <form action="/api/demo" method="post">
+                    <input type="hidden" name="view" value="new" />
+                    <button>
+                      New member view
+                      <ArrowRight size={14} />
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {readOnly && (
+          <section className="preview-banner" aria-label="Member preview">
+            <div>
+              <strong>
+                <Eye size={18} /> Member preview: {data.identity.name}
+              </strong>
+              <p>
+                Read-only. You remain signed in as {data.preview?.adminName}.
+              </p>
+            </div>
+            <Link className="button secondary" href="/people">
+              Return to admin
+            </Link>
+          </section>
+        )}
+        <main id="workspace-main" className="lab-main">
+          {screen === "project" && (
+            <Link className="breadcrumb" href={href("/projects")}>
+              Projects <ChevronRight size={14} /> {chosen?.name}
+            </Link>
+          )}
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow">
+                {screen === "dashboard"
+                  ? `WEEK OF ${shortDate(data.weekStart).toUpperCase()}`
+                  : "VENTURE ENGINEERING LAB"}
+              </p>
+              <h1>{heading}</h1>
+              <p>
+                {screen === "dashboard"
+                  ? admin
+                    ? "See who needs help and how the lab is progressing."
+                    : `Welcome, ${data.people.find((p) => p.id === data.identity.personId)?.name ?? data.identity.name}. Here’s your work for this week.`
+                  : screen === "projects"
+                    ? "Find your research projects and follow the team’s progress."
+                    : screen === "people"
+                      ? "Find a teammate by name or expertise, then explore their work."
+                      : screen === "profile"
+                        ? "Choose how you introduce yourself and receive reminders."
+                        : chosen?.title ||
+                          "Share progress and collaborate with your project team."}
+              </p>
+            </div>
+            <div className="page-actions">
+              {screen === "dashboard" && admin && !data.needsSetup && (
+                <button
+                  disabled={!ready}
+                  className="button secondary"
+                  onClick={copyLink}
+                >
+                  <Copy size={16} />
+                  Invite the lab
+                </button>
+              )}
+              {screen === "projects" && admin && (
+                <button
+                  disabled={!ready}
+                  className="button primary"
+                  onClick={() =>
+                    setEditing({
+                      project: blankProject(`P-${crypto.randomUUID()}`),
+                      create: true,
+                    })
+                  }
+                >
+                  <Plus size={17} />
+                  Create project
+                </button>
+              )}
+              {screen === "project" && chosen && (
+                <>
+                  {admin && (
+                    <button
+                      className="button secondary"
+                      disabled={!ready}
+                      onClick={() => setEditing({ project: chosen })}
+                    >
+                      <Pencil size={16} />
+                      Manage project
+                    </button>
+                  )}
+                  {ownIds.has(chosen.id) ? (
+                    <button
+                      disabled={!ready}
+                      className="button primary"
+                      onClick={() => setEntry({ projectId: chosen.id })}
+                    >
+                      <Pencil size={16} />
+                      Write weekly update
+                    </button>
+                  ) : (
+                    <button
+                      disabled={busy || !ready || readOnly}
+                      className="button primary"
+                      onClick={() => join(chosen.id)}
+                    >
+                      <Plus size={16} />
+                      {busy ? "Joining…" : "Join project"}
+                    </button>
+                  )}
+                </>
               )}
             </div>
-          )}
-        </div>
-      )}
-      {readOnly && (
-        <section className="preview-banner" aria-label="Member preview">
-          <div>
-            <strong>
-              <Eye size={18} />
-              Member preview: {data.identity.name}
-            </strong>
-            <p>Read-only. You remain signed in as {data.preview?.adminName}.</p>
           </div>
-          <Link className="button secondary" href="/people">
-            Return to admin
-          </Link>
-        </section>
-      )}
-      <main id="workspace-main" className="lab-main">
-        {screen === "project" && (
-          <Link className="breadcrumb" href={href("/projects")}>
-            Projects <ChevronRight size={14} /> Project workspace
-          </Link>
-        )}
-        <div className="page-heading">
-          <div>
-            <p className="eyebrow">
-              {screen === "dashboard"
-                ? `WEEK OF ${shortDate(data.weekStart).toUpperCase()}`
-                : "VENTURE ENGINEERING LAB"}
+          {error && (
+            <p className="error" role="alert">
+              {error}
             </p>
-            <h1>{heading}</h1>
-            <p>{subtitle}</p>
-          </div>
-          <div className="page-actions">
-            {screen === "dashboard" && admin && !data.needsSetup && (
-              <button
-                disabled={!ready}
-                className="button secondary"
-                onClick={copyLink}
-              >
-                <Copy size={16} />
-                Invite the lab
-              </button>
-            )}
-            {screen === "dashboard" && !admin && own.length > 0 && (
+          )}
+          {notice && (
+            <p className="success" role="status">
+              {notice}
+            </p>
+          )}
+          {connection && (
+            <p className="info-note">
+              Your name is set. The admin will confirm the connection to your
+              previous work. You can join projects and report now.
+            </p>
+          )}
+          {data.needsSetup ? (
+            <section className="panel setup-panel">
+              <FlaskConical size={36} />
+              <h2>Prepare the lab once</h2>
+              <p>
+                Initialize your new spreadsheet, then share the website with
+                your team. Members set up their own profile.
+              </p>
               <button
                 className="button primary"
-                disabled={!ready}
-                onClick={() => setEntry({})}
-              >
-                <Plus size={17} />
-                Weekly update
-              </button>
-            )}
-            {screen === "projects" && admin && (
-              <button
-                disabled={!ready}
-                className="button primary"
+                disabled={busy}
                 onClick={() =>
-                  setEditing({
-                    project: blankProject(`P-${crypto.randomUUID()}`),
-                    create: true,
+                  action(async () => {
+                    await mutate("/api/setup", {});
+                    await refresh();
                   })
                 }
               >
-                <Plus size={17} />
-                Create project
+                {busy ? "Setting up…" : "Initialize lab spreadsheet"}
               </button>
-            )}
-            {screen === "project" && chosen && (
-              <>
-                {admin && (
-                  <button
-                    className="button secondary"
-                    disabled={!ready}
-                    onClick={() => setEditing({ project: chosen })}
-                  >
-                    <Pencil size={16} />
-                    Manage project
-                  </button>
-                )}
-                {ownIds.has(chosen.id) ? (
-                  <button
-                    disabled={!ready}
-                    className="button primary"
-                    onClick={() => setEntry({ projectId: chosen.id })}
-                  >
-                    <Plus size={16} />
-                    Weekly update
-                  </button>
-                ) : (
-                  <button
-                    disabled={busy || !ready || readOnly}
-                    className="button primary"
-                    onClick={() => join(chosen.id)}
-                  >
-                    <Plus size={16} />
-                    {busy ? "Joining…" : "Join project"}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        {error && (
-          <div className="error global-error" role="alert">
-            {error}
-            <button
-              className="icon-button"
-              aria-label="Dismiss error"
-              onClick={() => setError("")}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
-        {notice && (
-          <p className="success workspace-notice" role="status">
-            {notice}
-            <button
-              className="icon-button"
-              aria-label="Dismiss notice"
-              onClick={() => setNotice("")}
-            >
-              <X size={16} />
-            </button>
-          </p>
-        )}
-        {data.needsSetup ? (
-          <section className="panel setup-panel">
-            <FlaskConical size={36} />
-            <h2>Prepare the lab once</h2>
-            <p>
-              Initialize the new spreadsheet, then invite the lab. Members
-              create their own account with Google.
-            </p>
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={() =>
-                action(async () => {
-                  await mutate("/api/setup", {});
-                  await refresh();
-                })
-              }
-            >
-              {busy ? "Setting up…" : "Initialize lab spreadsheet"}
-            </button>
-          </section>
-        ) : (
-          <>
-            {screen === "dashboard" && (
-              <>
-                <div className="dashboard-metrics">
-                  <div>
-                    <span>{admin ? "Research projects" : "My projects"}</span>
-                    <strong>
-                      {admin ? data.projects.length : myProjects.length}
-                    </strong>
-                    <FolderKanban size={20} />
-                  </div>
-                  <div>
-                    <span>
-                      {admin
-                        ? "Updates missing this week"
-                        : "Updates to share this week"}
-                    </span>
-                    <strong>{admin ? gaps.length : dueUpdates.length}</strong>
-                    <CalendarDays size={20} />
-                  </div>
-                  <div>
-                    <span>
-                      {admin ? "Responsibilities needing help" : "My blockers"}
-                    </span>
-                    <strong>
-                      {admin
-                        ? blocked.length
-                        : blocked.filter(
-                            (u) => u.personId === data.identity.personId,
-                          ).length}
-                    </strong>
-                    <CircleHelp size={20} />
-                  </div>
-                </div>
-                {!admin && !own.length && (
-                  <section className="welcome-panel">
-                    <div>
-                      <span className="welcome-icon">
-                        <FlaskConical size={26} />
+            </section>
+          ) : (
+            <>
+              {screen === "dashboard" && (
+                <>
+                  {admin ? (
+                    <>
+                      <div className="dashboard-metrics">
+                        <div>
+                          <span>Research projects</span>
+                          <strong>{data.projects.length}</strong>
+                          <FolderKanban size={20} />
+                        </div>
+                        <div>
+                          <span>Updates missing this week</span>
+                          <strong>{gaps.length}</strong>
+                          <CalendarDays size={20} />
+                        </div>
+                        <div>
+                          <span>People needing help</span>
+                          <strong>
+                            {new Set(blocked.map((u) => u.personId)).size}
+                          </strong>
+                          <Users size={20} />
+                        </div>
+                      </div>
+                      <div className="dashboard-columns">
+                        <div>
+                          <section className="panel dashboard-panel">
+                            <div className="section-heading">
+                              <h2>Needs attention</h2>
+                              <HelpTip label="Needs attention">
+                                The latest report for each responsibility is
+                                checked. A completed responsibility no longer
+                                counts as blocked.
+                              </HelpTip>
+                            </div>
+                            {blocked.length ? (
+                              blocked.slice(0, 5).map((u) => (
+                                <Link
+                                  className="attention-row"
+                                  href={projectHref(u.projectId)}
+                                  key={u.id}
+                                >
+                                  <span className="attention-dot" />
+                                  <div>
+                                    <strong>
+                                      {
+                                        data.people.find(
+                                          (p) => p.id === u.personId,
+                                        )?.name
+                                      }{" "}
+                                      ·{" "}
+                                      {
+                                        data.projects.find(
+                                          (p) => p.id === u.projectId,
+                                        )?.name
+                                      }
+                                    </strong>
+                                    <p>{u.blockers || u.progress}</p>
+                                  </div>
+                                  <ChevronRight size={16} />
+                                </Link>
+                              ))
+                            ) : (
+                              <p className="section-copy">
+                                No one has reported needing help.
+                              </p>
+                            )}
+                          </section>
+                          <section className="panel dashboard-panel">
+                            <div className="section-heading">
+                              <h2>Weekly reporting</h2>
+                              <span className="count-label">
+                                {pairs.length - gaps.length}/{pairs.length}{" "}
+                                shared
+                              </span>
+                            </div>
+                            <p className="section-copy">
+                              One update per active member and project each
+                              week. Open a project to read the full history.
+                            </p>
+                            {gaps.slice(0, 6).map((a) => (
+                              <Link
+                                className="reporting-row"
+                                href={projectHref(a.projectId)}
+                                key={`${a.personId}-${a.projectId}`}
+                              >
+                                <Avatar
+                                  name={
+                                    data.people.find((p) => p.id === a.personId)
+                                      ?.name ?? "Member"
+                                  }
+                                />
+                                <div>
+                                  <strong>
+                                    {
+                                      data.people.find(
+                                        (p) => p.id === a.personId,
+                                      )?.name
+                                    }
+                                  </strong>
+                                  <p>
+                                    {
+                                      data.projects.find(
+                                        (p) => p.id === a.projectId,
+                                      )?.name
+                                    }
+                                  </p>
+                                </div>
+                                <span>Not shared yet</span>
+                              </Link>
+                            ))}
+                            {!gaps.length && (
+                              <p className="success">Everyone is up to date.</p>
+                            )}
+                            {gaps.length > 6 && (
+                              <Link
+                                className="section-link"
+                                href={href("/projects")}
+                              >
+                                Review all projects <ArrowRight size={15} />
+                              </Link>
+                            )}
+                          </section>
+                          {pending.length > 0 && (
+                            <Link
+                              className="info-note request-shortcut"
+                              href={href("/people")}
+                            >
+                              {pending.length} existing profile{" "}
+                              {pending.length === 1
+                                ? "connection needs"
+                                : "connections need"}{" "}
+                              confirmation <ArrowRight size={16} />
+                            </Link>
+                          )}
+                        </div>
+                        <aside>
+                          {deadlinePanel()}
+                          <section className="panel dashboard-panel">
+                            <h2>Invite your team</h2>
+                            <p className="section-copy">
+                              Share the website. Members sign in with Google,
+                              choose their name and join projects themselves.
+                            </p>
+                            <button
+                              className="button secondary"
+                              onClick={copyLink}
+                              disabled={!ready}
+                            >
+                              <Copy size={16} />
+                              Copy invite link
+                            </button>
+                          </section>
+                        </aside>
+                      </div>
+                    </>
+                  ) : !myProjects.length ? (
+                    <section className="panel first-action">
+                      <span className="large-icon">
+                        <FolderKanban size={30} />
                       </span>
-                      <h2>Your account is ready.</h2>
+                      <p className="eyebrow">YOUR NEXT STEP</p>
+                      <h2>Choose your first project</h2>
                       <p>
-                        Start by joining a project. Then share a weekly update
-                        and get to know your collaborators.
+                        Find the project you work on and select “Join project”.
+                        Your weekly updates and deadlines will then appear here.
                       </p>
                       <Link className="button primary" href={href("/projects")}>
-                        Explore projects
-                        <ArrowRight size={16} />
+                        Choose a project <ArrowRight size={16} />
                       </Link>
-                      <Link
-                        className="welcome-profile-link"
-                        href={href("/profile")}
-                      >
-                        Add your expertise to your profile
-                      </Link>
-                    </div>
-                  </section>
-                )}
-                <div className="dashboard-columns">
-                  <div>
-                    {admin ? (
-                      <section className="panel dashboard-panel">
-                        <div className="section-heading">
-                          <h2>Needs attention</h2>
-                          <span className="count-label">
-                            {blocked.length} blockers
-                          </span>
-                        </div>
-                        {blocked.length ? (
-                          blocked.slice(0, 5).map((u) => (
-                            <Link
-                              href={projectHref(u.projectId)}
-                              className="attention-row"
-                              key={u.id}
-                            >
-                              <span className="attention-dot" />
-                              <div>
-                                <strong>
-                                  {
-                                    data.projects.find(
-                                      (p) => p.id === u.projectId,
-                                    )?.name
-                                  }
-                                </strong>
-                                <p>
-                                  {
-                                    data.people.find((p) => p.id === u.personId)
-                                      ?.name
-                                  }{" "}
-                                  · {u.blockers || u.progress}
-                                </p>
-                              </div>
-                              <ChevronRight size={16} />
-                            </Link>
-                          ))
-                        ) : (
-                          <Empty title="No reported blockers">
-                            The team’s latest updates have no open blockers.
-                          </Empty>
-                        )}
-                        {blocked.length > 5 && (
-                          <Link
-                            className="section-link"
-                            href={href("/projects")}
-                          >
-                            Review projects
-                            <ArrowRight size={15} />
-                          </Link>
-                        )}
-                      </section>
-                    ) : (
-                      own.length > 0 && (
+                    </section>
+                  ) : (
+                    <div className="dashboard-columns">
+                      <div>
                         <section className="panel dashboard-panel">
                           <div className="section-heading">
-                            <h2>This week’s updates</h2>
-                            <span className="count-label">
-                              {dueUpdates.length} to share
-                            </span>
+                            <h2>Your projects this week</h2>
+                            <Link
+                              className="section-link"
+                              href={href("/projects")}
+                            >
+                              Find more projects
+                            </Link>
                           </div>
+                          <p className="section-copy">
+                            Write a short update for each project. Progress,
+                            help needed, and your next step.
+                          </p>
                           {myProjects.map((p) => (
                             <div className="weekly-row" key={p.id}>
+                              <span className="project-symbol">
+                                <FolderKanban size={22} />
+                              </span>
                               <div>
                                 <Link href={projectHref(p.id)}>{p.name}</Link>
                                 <span>
+                                  {p.stage} ·{" "}
                                   {reported(p.id, data.identity.personId)
                                     ? "Shared this week"
-                                    : activeOwnIds.has(p.id)
-                                      ? "Waiting for your update"
-                                      : "Your responsibilities are complete"}
+                                    : "Ready for your update"}
                                 </span>
                               </div>
-                              {reported(p.id, data.identity.personId) ||
-                              !activeOwnIds.has(p.id) ? (
+                              {reported(p.id, data.identity.personId) && (
                                 <CheckCircle2
+                                  size={18}
                                   className="green-icon"
-                                  size={20}
                                 />
-                              ) : (
-                                <button
-                                  className="button secondary small-button"
-                                  disabled={!ready}
-                                  aria-label={`Update ${p.name}`}
-                                  onClick={() => setEntry({ projectId: p.id })}
-                                >
-                                  Write update
-                                </button>
                               )}
+                              <button
+                                className="button secondary"
+                                disabled={!ready}
+                                aria-label={`Write weekly update for ${p.name}`}
+                                onClick={() => setEntry({ projectId: p.id })}
+                              >
+                                Write update
+                              </button>
                             </div>
                           ))}
                         </section>
-                      )
-                    )}
-                    <section className="panel dashboard-panel">
-                      <div className="section-heading">
-                        <h2>
-                          {admin ? "Weekly reporting" : "Recent team activity"}
-                        </h2>
-                        {admin && (
-                          <span className="count-label">
-                            {pairs.length - gaps.length}/{pairs.length} shared
-                          </span>
-                        )}
-                      </div>
-                      {admin ? (
-                        <>
+                        <section className="panel dashboard-panel">
+                          <h2>Recent progress in your projects</h2>
                           <p className="section-copy">
-                            One update per active member and project each week.
-                            History stays in the project workspace.
+                            Your teammates’ work is shared here so you can stay
+                            connected.
                           </p>
-                          {gaps.slice(0, 5).map((a) => (
-                            <Link
-                              className="reporting-row"
-                              href={projectHref(a.projectId)}
-                              key={`${a.personId}-${a.projectId}`}
-                            >
-                              <Avatar
-                                name={
-                                  data.people.find((p) => p.id === a.personId)
-                                    ?.name ?? "Member"
-                                }
-                              />
-                              <div>
-                                <strong>
-                                  {
-                                    data.people.find((p) => p.id === a.personId)
-                                      ?.name
+                          {sorted
+                            .filter((u) => ownIds.has(u.projectId))
+                            .slice(0, 3)
+                            .map((u) => (
+                              <Link
+                                className="activity-row"
+                                key={u.id}
+                                href={projectHref(u.projectId)}
+                              >
+                                <Avatar
+                                  name={
+                                    data.people.find((p) => p.id === u.personId)
+                                      ?.name ?? "Member"
                                   }
-                                </strong>
-                                <p>
-                                  {
-                                    data.projects.find(
-                                      (p) => p.id === a.projectId,
-                                    )?.name
-                                  }
-                                </p>
-                              </div>
-                              <span>Not shared yet</span>
-                            </Link>
-                          ))}
-                          {!gaps.length && (
-                            <Empty title="Everyone is up to date">
-                              All active project memberships have an update this
-                              week.
-                            </Empty>
-                          )}
-                          {gaps.length > 5 && (
+                                />
+                                <div>
+                                  <strong>
+                                    {
+                                      data.people.find(
+                                        (p) => p.id === u.personId,
+                                      )?.name
+                                    }
+                                  </strong>
+                                  <p>{u.progress}</p>
+                                </div>
+                                <ChevronRight size={16} />
+                              </Link>
+                            ))}
+                          {!sorted.some((u) => ownIds.has(u.projectId)) && (
                             <p className="field-help">
-                              {gaps.length - 5} more memberships awaiting an
-                              update. Open Projects to review each team.
+                              Your first update will start the project’s
+                              progress history.
                             </p>
                           )}
-                        </>
-                      ) : (
-                        sorted
-                          .filter((u) => ownIds.has(u.projectId))
-                          .slice(0, 4)
-                          .map((u) => (
-                            <Link
-                              className="activity-row"
-                              href={projectHref(u.projectId)}
-                              key={u.id}
-                            >
-                              <Avatar
-                                name={
-                                  data.people.find((p) => p.id === u.personId)
-                                    ?.name ?? "Member"
-                                }
-                              />
-                              <div>
-                                <strong>
-                                  {
-                                    data.people.find((p) => p.id === u.personId)
-                                      ?.name
-                                  }
-                                </strong>
-                                <p>
-                                  {
-                                    data.projects.find(
-                                      (p) => p.id === u.projectId,
-                                    )?.name
-                                  }
-                                </p>
-                                <span>{u.progress}</span>
-                              </div>
-                              <small>{shortDate(u.createdAt)}</small>
-                            </Link>
-                          ))
-                      )}
-                      {!admin &&
-                        !sorted.some((u) => ownIds.has(u.projectId)) && (
-                          <Empty title="Progress starts here">
-                            Your projects’ weekly updates will appear here.
-                          </Empty>
-                        )}
-                    </section>
-                  </div>
-                  <aside>
-                    <section className="panel dashboard-panel">
-                      <div className="section-heading">
-                        <h2>Deadlines</h2>
-                        <CalendarDays size={19} />
+                        </section>
                       </div>
-                      <p className="section-copy">
-                        Next seven days and overdue work.
+                      <aside>
+                        {deadlinePanel()}
+                        <section className="panel dashboard-panel guide-card">
+                          <h2>How to report</h2>
+                          <ol>
+                            <li>Choose your project.</li>
+                            <li>Write what you accomplished.</li>
+                            <li>Ask for help and add next week’s plan.</li>
+                          </ol>
+                          <p className="field-help">
+                            Your name and date are added automatically.
+                          </p>
+                        </section>
+                      </aside>
+                    </div>
+                  )}
+                </>
+              )}
+              {screen === "projects" && (
+                <>
+                  <div className="directory-toolbar">
+                    <div className="segmented" aria-label="Project scope">
+                      <button
+                        aria-pressed={onlyMine}
+                        className={onlyMine ? "selected" : ""}
+                        onClick={() => setOnlyMine(true)}
+                      >
+                        My projects <span>{myProjects.length}</span>
+                      </button>
+                      <button
+                        aria-pressed={!onlyMine}
+                        className={!onlyMine ? "selected" : ""}
+                        onClick={() => setOnlyMine(false)}
+                      >
+                        All lab projects <span>{data.projects.length}</span>
+                      </button>
+                    </div>
+                    <div className="search-field">
+                      <Search size={18} />
+                      <input
+                        aria-label="Search projects"
+                        placeholder="Search projects…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <p className="directory-explanation">
+                    {onlyMine
+                      ? "Projects you have joined. Open one to write your weekly update."
+                      : "Shared research for this team. Open a project and join if you work on it."}{" "}
+                    <HelpTip label="Project access">
+                      Everyone in the lab can read progress. Joining adds a
+                      project to My work and lets you report your own progress.
+                    </HelpTip>
+                  </p>
+                  <div className="projects-list">
+                    {filteredProjects.map(projectCard)}
+                  </div>
+                  {!filteredProjects.length && (
+                    <section className="panel empty-state">
+                      <h2>
+                        {search
+                          ? "No matching projects"
+                          : "You haven’t joined a project yet"}
+                      </h2>
+                      <p>
+                        {search
+                          ? "Try another search."
+                          : "Browse all lab projects and choose the research you work on."}
                       </p>
-                      {deadlines.slice(0, 6).map((d) => (
-                        <Link
-                          className="deadline-row"
-                          href={projectHref(d.projectId)}
-                          key={d.id}
+                      {onlyMine && (
+                        <button
+                          className="button primary"
+                          onClick={() => setOnlyMine(false)}
                         >
-                          <span
-                            className={
-                              dayDifference(d.due, data.today) < 0
-                                ? "deadline-date late"
-                                : "deadline-date"
-                            }
-                          >
-                            {shortDate(d.due)}
-                          </span>
+                          Browse lab projects
+                        </button>
+                      )}
+                    </section>
+                  )}
+                </>
+              )}
+              {screen === "project" && chosen && (
+                <>
+                  <section className="project-overview panel">
+                    <div className="phase-summary">
+                      <span className="field-label">
+                        Research phase{" "}
+                        <HelpTip label="Research phase">
+                          This describes the whole project’s research stage.
+                          Your weekly update describes your own progress.
+                        </HelpTip>
+                      </span>
+                      <span
+                        className="stage-pill"
+                        aria-label={`Research phase: ${chosen.stage}`}
+                      >
+                        {chosen.stage}
+                      </span>
+                    </div>
+                    <div className="milestone-strip">
+                      <span className="field-label">Next milestone</span>
+                      <strong>
+                        {chosen.milestone ||
+                          "The team hasn’t added a milestone yet."}
+                      </strong>
+                      {chosen.due && (
+                        <span>
+                          <CalendarDays size={15} />
+                          {shortDate(chosen.due)}
+                          {dayDifference(chosen.due, data.today) < 0
+                            ? " · Overdue"
+                            : ""}
+                        </span>
+                      )}
+                    </div>
+                  </section>
+                  {!ownIds.has(chosen.id) && (
+                    <p className="directory-explanation">
+                      You can read this project’s updates. Select “Join project”
+                      above to add your own progress.
+                    </p>
+                  )}
+                  <div
+                    className="project-tabs"
+                    role="tablist"
+                    aria-label="Project sections"
+                  >
+                    {[
+                      { key: "updates", label: "Weekly progress" },
+                      { key: "team", label: "Team & responsibilities" },
+                      { key: "details", label: "Project details" },
+                    ].map((t) => (
+                      <button
+                        key={t.key}
+                        id={`tab-${t.key}`}
+                        role="tab"
+                        aria-selected={tab === t.key}
+                        aria-controls={`panel-${t.key}`}
+                        tabIndex={tab === t.key ? 0 : -1}
+                        onKeyDown={(e) => {
+                          const keys = ["updates", "team", "details"];
+                          if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                            e.preventDefault();
+                            const next =
+                              keys[
+                                (keys.indexOf(tab) +
+                                  (e.key === "ArrowRight" ? 1 : 2)) %
+                                  3
+                              ];
+                            setTab(next);
+                            document.getElementById(`tab-${next}`)?.focus();
+                          }
+                        }}
+                        onClick={() => setTab(t.key)}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <section
+                    role="tabpanel"
+                    id={`panel-${tab}`}
+                    aria-labelledby={`tab-${tab}`}
+                    className="project-tab-content"
+                  >
+                    {tab === "updates" ? (
+                      <>
+                        <div className="section-heading">
                           <div>
-                            <strong>{d.title}</strong>
-                            <p>
+                            <h2>Team’s weekly progress</h2>
+                            <p className="section-copy">
+                              Read what changed, see who needs help, and follow
+                              the next steps.
+                            </p>
+                          </div>
+                          <select
+                            aria-label="Filter updates by member"
+                            value={personFilter}
+                            onChange={(e) => setPersonFilter(e.target.value)}
+                          >
+                            <option value="">Everyone</option>
+                            {data.people
+                              .filter((p) =>
+                                data.assignments.some(
+                                  (a) =>
+                                    a.personId === p.id &&
+                                    a.projectId === chosen.id,
+                                ),
+                              )
+                              .map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="update-feed">
+                          {projectUpdates.slice(0, limit).map(updateCard)}
+                          {!projectUpdates.length && (
+                            <div className="panel empty-state">
+                              <h3>No progress shared yet</h3>
+                              <p>
+                                {ownIds.has(chosen.id)
+                                  ? "Share your first weekly update using the button above."
+                                  : "Join this project to start its progress history."}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {projectUpdates.length > limit && (
+                          <button
+                            className="button secondary"
+                            onClick={() => setLimit(limit + 12)}
+                          >
+                            Load earlier updates
+                          </button>
+                        )}
+                      </>
+                    ) : tab === "team" ? (
+                      <>
+                        <p className="section-copy">
+                          Members can join themselves. The admin can add a
+                          specific responsibility and deadline.
+                        </p>
+                        <AssignmentList
+                          data={data}
+                          projectId={chosen.id}
+                          refresh={refresh}
+                        />
+                        {data.collaborators.filter(
+                          (c) => c.projectId === chosen.id,
+                        ).length > 0 && (
+                          <section className="panel dashboard-panel">
+                            <h3>External collaborators</h3>
+                            {data.collaborators
+                              .filter((c) => c.projectId === chosen.id)
+                              .map((c) => (
+                                <p key={c.id}>
+                                  {c.name} · {c.affiliation} · {c.role}
+                                </p>
+                              ))}
+                          </section>
+                        )}
+                      </>
+                    ) : (
+                      <div className="panel details-panel">
+                        <h2>Research details</h2>
+                        <div
+                          className="phase-track"
+                          aria-label="Research stages"
+                        >
+                          {STAGES.map((s) => (
+                            <span
+                              className={chosen.stage === s ? "current" : ""}
+                              key={s}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                        <dl className="project-details">
+                          {[
+                            ["Research title", chosen.title],
+                            ["Methods", chosen.methods],
+                            ["Publication status", chosen.pipeline],
+                            ["Target journal", chosen.journal],
+                            ["Target conference", chosen.conference],
+                            ["Priority", chosen.priority],
+                            ["Notes", chosen.notes],
+                          ].map(([label, value]) => (
+                            <div key={label}>
+                              <dt>{label}</dt>
+                              <dd>{value || "Not added yet"}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+                  </section>
+                </>
+              )}
+              {screen === "people" && (
+                <>
+                  {admin && pending.length > 0 && (
+                    <section className="panel connection-requests">
+                      <h2>Connect existing lab profiles</h2>
+                      <p className="section-copy">
+                        Confirm only if this Google account belongs to the named
+                        teammate. Their previous reports and responsibilities
+                        will join their account.
+                      </p>
+                      {pending.map((r) => (
+                        <div className="connection-row" key={r.id}>
+                          <div>
+                            <strong>
+                              {data.people.find((p) => p.id === r.id)?.name} →{" "}
                               {
-                                data.projects.find((p) => p.id === d.projectId)
+                                data.people.find((p) => p.id === r.rosterId)
                                   ?.name
                               }
-                            </p>
-                            {dayDifference(d.due, data.today) < 0 && (
-                              <small className="late-label">Overdue</small>
+                            </strong>
+                            <p>{r.requesterEmail}</p>
+                          </div>
+                          <button
+                            className="button primary"
+                            disabled={busy}
+                            aria-label={`Confirm connection for ${r.requesterEmail}`}
+                            onClick={() =>
+                              action(async () => {
+                                await mutate("/api/roster-links", {
+                                  id: r.id,
+                                  approve: true,
+                                });
+                                await refresh();
+                                setNotice(
+                                  "Previous work connected to the member’s account.",
+                                );
+                              })
+                            }
+                          >
+                            Confirm connection
+                          </button>
+                          <button
+                            className="button secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              action(async () => {
+                                await mutate("/api/roster-links", {
+                                  id: r.id,
+                                  approve: false,
+                                });
+                                await refresh();
+                              })
+                            }
+                          >
+                            Keep separate
+                          </button>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                  <div className="directory-toolbar">
+                    <div className="search-field">
+                      <Search size={18} />
+                      <input
+                        aria-label="Search people and expertise"
+                        placeholder="Search a name or skill…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
+                    </div>
+                    <Link className="button secondary" href={href("/profile")}>
+                      Add my expertise
+                    </Link>
+                  </div>
+                  <p className="directory-explanation">
+                    {filteredPeople.length} teammates · Skills help you find
+                    someone to collaborate with.
+                  </p>
+                  <div className="people-grid">
+                    {filteredPeople.map((p) => {
+                      const profile = data.profiles?.find((r) => r.id === p.id),
+                        projects = data.projects.filter((project) =>
+                          data.assignments.some(
+                            (a) =>
+                              a.projectId === project.id && a.personId === p.id,
+                          ),
+                        );
+                      return (
+                        <article className="person-card panel" key={p.id}>
+                          <div className="person-card-heading">
+                            <Avatar name={p.name} />
+                            <div>
+                              <h2>{p.name}</h2>
+                              <p>
+                                {profile?.position ||
+                                  (p.role === "admin"
+                                    ? "Administrator"
+                                    : "Lab member")}
+                              </p>
+                            </div>
+                            {admin && (
+                              <button
+                                disabled={!ready}
+                                className="icon-button"
+                                aria-label={`Edit account for ${p.name}`}
+                                onClick={() => setPerson(p)}
+                              >
+                                <Pencil size={15} />
+                              </button>
                             )}
                           </div>
-                        </Link>
-                      ))}
-                      {!deadlines.length && (
-                        <Empty title="No upcoming deadlines">
-                          Project milestones and responsibility due dates appear
-                          here.
-                        </Empty>
-                      )}
-                    </section>
-                    <section className="collaboration-note">
-                      <Users size={24} />
-                      <h2>Research works better together.</h2>
-                      <p>
-                        Find a lab member with the skills your project needs.
-                      </p>
-                      <Link href={href("/people")}>
-                        Explore expertise
-                        <ArrowRight size={16} />
-                      </Link>
-                    </section>
+                          <div className="expertise-tags">
+                            {profile?.expertise ? (
+                              profile.expertise
+                                .split(",")
+                                .filter(Boolean)
+                                .slice(0, 5)
+                                .map((skill, i) => (
+                                  <span key={i}>{skill.trim()}</span>
+                                ))
+                            ) : (
+                              <p className="field-help">
+                                Expertise not added yet
+                              </p>
+                            )}
+                          </div>
+                          <p className="person-projects">
+                            {projects.length}{" "}
+                            {projects.length === 1 ? "project" : "projects"}
+                          </p>
+                          <div className="person-card-actions">
+                            <button
+                              className="button secondary"
+                              disabled={!ready}
+                              onClick={() => setSelectedPerson(p)}
+                            >
+                              View profile
+                            </button>
+                            {admin && p.role === "member" && (
+                              <Link
+                                aria-label={`Preview ${p.name}`}
+                                href={`/?preview=${encodeURIComponent(p.id)}`}
+                              >
+                                <Eye size={15} />
+                                Preview view
+                              </Link>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  {!filteredPeople.length && (
+                    <p className="section-copy">
+                      No teammates match this search.
+                    </p>
+                  )}
+                </>
+              )}
+              {screen === "profile" && (
+                <div className="profile-layout">
+                  <ProfileForm data={data} saved={refresh} />
+                  <aside>
                     {admin && (
-                      <section className="panel email-status">
-                        <div>
-                          <Mail size={18} />
-                          <h3>Deadline emails</h3>
+                      <section className="panel dashboard-panel email-settings">
+                        <div className="section-heading">
+                          <h2>Lab email reminders</h2>
+                          <Mail size={20} />
                         </div>
-                        <p>
-                          {data.demo
-                            ? "Disabled in sample mode."
-                            : data.emailReady
-                              ? "Configured. Deadlines are checked daily after deployment."
-                              : "Not activated yet. Add the sender and email keys in Vercel."}
+                        <p className="section-copy">
+                          Send from your existing Gmail account. No purchased
+                          domain is needed.
                         </p>
-                        {!data.demo && data.reminderHealth && (
-                          <small>
-                            {data.reminderHealth.sent} accepted ·{" "}
-                            {data.reminderHealth.pending} awaiting confirmation
-                          </small>
-                        )}
-                        {!data.demo && !data.emailReady && (
+                        <span
+                          className={`email-state ${data.emailReady ? "ready" : ""}`}
+                        >
+                          {data.demo
+                            ? "Sample mode"
+                            : data.emailReady
+                              ? "Gmail configured"
+                              : "Gmail setup needed"}
+                        </span>
+                        <p className="field-help">
+                          {data.emailReady
+                            ? "Test delivery to your own Google email before relying on scheduled reminders."
+                            : "The setup guide explains the two Gmail settings. After saving them in Vercel, redeploy and test here."}
+                        </p>
+                        <button
+                          className="button primary"
+                          disabled={
+                            busy || (!data.demo && !data.emailReady) || readOnly
+                          }
+                          onClick={() =>
+                            action(async () => {
+                              const result = await mutate(
+                                "/api/email-test",
+                                {},
+                              );
+                              setNotice(result.message);
+                              await refresh();
+                            })
+                          }
+                        >
+                          <Mail size={16} />
+                          {data.demo
+                            ? "Preview test email"
+                            : "Send me a test email"}
+                        </button>
+                        {data.demo && (
                           <p className="field-help">
-                            Follow the Email alerts section in the setup guide.
+                            Preview: “VE Lab · Gmail test”. No email will be
+                            sent.
+                          </p>
+                        )}
+                        {data.reminderHealth && (
+                          <p className="field-help">
+                            {data.reminderHealth.sent} accepted ·{" "}
+                            {data.reminderHealth.pending} awaiting review. An
+                            uncertain send is held to avoid sending twice.
                           </p>
                         )}
                       </section>
                     )}
+                    <section className="panel dashboard-panel guide-card">
+                      <h2>Your profile is shared</h2>
+                      <p className="section-copy">
+                        Your name, skills and research interests help the team
+                        find you. Your Google password is never shared with this
+                        app.
+                      </p>
+                    </section>
                   </aside>
                 </div>
-              </>
-            )}
-            {screen === "projects" && (
-              <>
-                <div className="directory-toolbar">
-                  <div className="search-field">
-                    <Search size={18} />
-                    <input
-                      disabled={!ready}
-                      aria-label="Search projects"
-                      placeholder="Search projects or methods…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                  <select
-                    aria-label="Filter research stage"
-                    value={stageFilter}
-                    onChange={(e) => setStageFilter(e.target.value)}
-                  >
-                    <option value="">All research phases</option>
-                    {STAGES.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                  <div className="segmented-filter">
-                    <button
-                      className={!onlyMine ? "active" : ""}
-                      onClick={() => setOnlyMine(false)}
-                    >
-                      All projects
-                    </button>
-                    <button
-                      className={onlyMine ? "active" : ""}
-                      onClick={() => setOnlyMine(true)}
-                    >
-                      My projects
-                    </button>
-                  </div>
-                </div>
-                <p className="directory-count">
-                  {filteredProjects.length}{" "}
-                  {filteredProjects.length === 1 ? "project" : "projects"}
-                </p>
-                <div className="project-grid">
-                  {filteredProjects.map(projectCard)}
-                </div>
-                {!filteredProjects.length && (
-                  <Empty title="No matching projects">
-                    Try another search or switch to All projects.
-                  </Empty>
-                )}
-              </>
-            )}
-            {screen === "project" && chosen && (
-              <>
-                <section className="project-overview panel">
-                  <div className="project-overview-meta">
-                    <span className="stage-pill">{chosen.stage}</span>
-                    <span>
-                      {
-                        data.people.filter((p) =>
-                          data.assignments.some(
-                            (a) =>
-                              a.projectId === chosen.id && a.personId === p.id,
-                          ),
-                        ).length
-                      }{" "}
-                      team members
-                    </span>
-                    <span>
-                      {
-                        data.updates.filter((u) => u.projectId === chosen.id)
-                          .length
-                      }{" "}
-                      weekly updates
-                    </span>
-                    {ownIds.has(chosen.id) && (
-                      <span className="joined-label">You’re on this team</span>
-                    )}
-                  </div>
-                  <div
-                    className="phase-track"
-                    aria-label={`Research phase: ${chosen.stage}`}
-                  >
-                    {STAGES.map((stage, i) => (
-                      <div
-                        key={stage}
-                        className={
-                          i <
-                          STAGES.indexOf(
-                            chosen.stage as (typeof STAGES)[number],
-                          )
-                            ? "complete"
-                            : stage === chosen.stage
-                              ? "current"
-                              : ""
-                        }
-                      >
-                        <span>
-                          {i <
-                          STAGES.indexOf(
-                            chosen.stage as (typeof STAGES)[number],
-                          ) ? (
-                            <CheckCircle2 size={16} />
-                          ) : (
-                            i + 1
-                          )}
-                        </span>
-                        <small>{stage}</small>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="milestone-strip">
-                    <CalendarDays size={19} />
-                    <div>
-                      <span>Next milestone</span>
-                      <strong>
-                        {chosen.milestone || "No milestone set yet"}
-                      </strong>
-                    </div>
-                    <p>
-                      {chosen.due
-                        ? `Due ${shortDate(chosen.due)}`
-                        : "No deadline set"}
-                    </p>
-                  </div>
-                </section>
-                <div
-                  className="workspace-tabs"
-                  role="tablist"
-                  aria-label="Project sections"
-                  onKeyDown={(event) => {
-                    const ids = ["updates", "team", "details"];
-                    const current = ids.indexOf(tab);
-                    const next =
-                      event.key === "ArrowRight"
-                        ? (current + 1) % 3
-                        : event.key === "ArrowLeft"
-                          ? (current + 2) % 3
-                          : event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? 2
-                              : -1;
-                    if (next >= 0) {
-                      event.preventDefault();
-                      setTab(ids[next]);
-                      document.getElementById(`tab-${ids[next]}`)?.focus();
-                    }
-                  }}
-                >
-                  {[
-                    { id: "updates", label: "Weekly updates" },
-                    { id: "team", label: "Team & responsibilities" },
-                    { id: "details", label: "Research details" },
-                  ].map((t) => (
-                    <button
-                      role="tab"
-                      disabled={!ready}
-                      tabIndex={tab === t.id ? 0 : -1}
-                      id={`tab-${t.id}`}
-                      aria-selected={tab === t.id}
-                      aria-controls={`panel-${t.id}`}
-                      key={t.id}
-                      className={tab === t.id ? "active" : ""}
-                      onClick={() => {
-                        setTab(t.id);
-                        setSearch("");
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                <section
-                  role="tabpanel"
-                  id={`panel-${tab}`}
-                  aria-labelledby={`tab-${tab}`}
-                >
-                  {tab === "updates" && (
-                    <>
-                      <div className="section-heading">
-                        <div>
-                          <h2>Team progress</h2>
-                          <p>
-                            Everyone’s weekly updates, newest first. Use the
-                            history to review progress over time.
-                          </p>
-                        </div>
-                        {ownIds.has(chosen.id) && (
-                          <button
-                            className="button secondary"
-                            disabled={!ready}
-                            onClick={() => setEntry({ projectId: chosen.id })}
-                          >
-                            Write weekly update
-                          </button>
-                        )}
-                      </div>
-                      <div className="directory-toolbar">
-                        <div className="search-field">
-                          <Search size={17} />
-                          <input
-                            aria-label="Search weekly updates"
-                            placeholder="Search progress or blockers…"
-                            value={search}
-                            onChange={(e) => {
-                              setSearch(e.target.value);
-                              setLimit(12);
-                            }}
-                          />
-                        </div>
-                        <select
-                          aria-label="Filter by person"
-                          value={personFilter}
-                          onChange={(e) => {
-                            setPersonFilter(e.target.value);
-                            setLimit(12);
-                          }}
-                        >
-                          <option value="">Everyone</option>
-                          {data.people
-                            .filter(
-                              (p) =>
-                                data.assignments.some(
-                                  (a) =>
-                                    a.projectId === chosen.id &&
-                                    a.personId === p.id,
-                                ) ||
-                                data.updates.some(
-                                  (u) =>
-                                    u.projectId === chosen.id &&
-                                    u.personId === p.id,
-                                ),
-                            )
-                            .map((p) => (
-                              <option value={p.id} key={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                        </select>
-                        <select
-                          aria-label="Filter by status"
-                          value={statusFilter}
-                          onChange={(e) => {
-                            setStatusFilter(e.target.value);
-                            setLimit(12);
-                          }}
-                        >
-                          <option value="">All statuses</option>
-                          <option>On track</option>
-                          <option>Blocked</option>
-                          <option>Done</option>
-                        </select>
-                      </div>
-                      <div className="weekly-feed">
-                        {projectUpdates.slice(0, limit).map(updateCard)}
-                      </div>
-                      {!projectUpdates.length && (
-                        <Empty
-                          title={
-                            search || personFilter || statusFilter
-                              ? "No matching updates"
-                              : "No weekly updates yet"
-                          }
-                        >
-                          {ownIds.has(chosen.id)
-                            ? "Share your progress to start the project history."
-                            : "Join this project to share your own progress."}
-                        </Empty>
-                      )}
-                      {projectUpdates.length > limit && (
-                        <button
-                          className="button secondary load-more"
-                          onClick={() => setLimit(limit + 12)}
-                        >
-                          Load older updates
-                        </button>
-                      )}
-                    </>
-                  )}
-                  {tab === "team" && (
-                    <div className="panel project-team-panel">
-                      <AssignmentList
-                        data={data}
-                        projectId={chosen.id}
-                        refresh={refresh}
-                      />
-                      {data.collaborators.filter(
-                        (c) => c.projectId === chosen.id,
-                      ).length > 0 && (
-                        <section className="detail-section">
-                          <h3>External collaborators</h3>
-                          {data.collaborators
-                            .filter((c) => c.projectId === chosen.id)
-                            .map((c) => (
-                              <div className="assignment-row" key={c.id}>
-                                <div>
-                                  <strong>{c.name}</strong>
-                                  <p>
-                                    {c.affiliation} · {c.role}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                        </section>
-                      )}
-                      <Link className="section-link" href={href("/people")}>
-                        Find collaborators in People
-                        <ArrowRight size={15} />
-                      </Link>
-                    </div>
-                  )}
-                  {tab === "details" && (
-                    <div className="panel research-details">
-                      <h2>Research details</h2>
-                      <dl>
-                        <div>
-                          <dt>Purpose / research title</dt>
-                          <dd>{chosen.title || "Not added yet"}</dd>
-                        </div>
-                        <div>
-                          <dt>Methods</dt>
-                          <dd>{chosen.methods || "Not added yet"}</dd>
-                        </div>
-                        <div>
-                          <dt>Publication status</dt>
-                          <dd>{chosen.pipeline}</dd>
-                        </div>
-                        <div>
-                          <dt>Target journal</dt>
-                          <dd>{chosen.journal || "Not set"}</dd>
-                        </div>
-                        <div>
-                          <dt>Target conference</dt>
-                          <dd>{chosen.conference || "Not set"}</dd>
-                        </div>
-                        <div>
-                          <dt>Priority</dt>
-                          <dd>{chosen.priority}</dd>
-                        </div>
-                        <div>
-                          <dt>Notes</dt>
-                          <dd>{chosen.notes || "No notes yet"}</dd>
-                        </div>
-                      </dl>
-                    </div>
-                  )}
-                </section>
-              </>
-            )}
-            {screen === "people" && (
-              <>
-                <div className="directory-toolbar">
-                  <div className="search-field">
-                    <Search size={18} />
-                    <input
-                      disabled={!ready}
-                      aria-label="Search people and expertise"
-                      placeholder="Search a name, skill or research interest…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                  <Link className="button secondary" href={href("/profile")}>
-                    Add my expertise
-                  </Link>
-                </div>
-                <p className="directory-count">
-                  {filteredPeople.length} lab members
-                </p>
-                <div className="people-grid">
-                  {filteredPeople.map((p) => {
-                    const profile = data.profiles?.find((r) => r.id === p.id),
-                      projects = data.projects.filter((project) =>
-                        data.assignments.some(
-                          (a) =>
-                            a.projectId === project.id && a.personId === p.id,
-                        ),
-                      );
-                    return (
-                      <article className="person-card panel" key={p.id}>
-                        <div className="person-card-heading">
-                          <Avatar name={p.name} />
-                          <div>
-                            <h2>{p.name}</h2>
-                            <p>
-                              {profile?.position ||
-                                (p.role === "admin"
-                                  ? "Administrator"
-                                  : "Lab member")}
-                            </p>
-                          </div>
-                          {admin && (
-                            <button
-                              disabled={!ready}
-                              className="icon-button"
-                              aria-label={`Edit account for ${p.name}`}
-                              onClick={() => setPerson(p)}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                          )}
-                        </div>
-                        <p className="person-affiliation">
-                          {p.affiliation || "Venture Engineering Lab"}
-                        </p>
-                        <div className="expertise-tags">
-                          {profile?.expertise ? (
-                            profile.expertise
-                              .split(",")
-                              .filter(Boolean)
-                              .slice(0, 5)
-                              .map((skill, i) => (
-                                <span key={i}>{skill.trim()}</span>
-                              ))
-                          ) : (
-                            <span className="no-expertise">
-                              Expertise not added yet
-                            </span>
-                          )}
-                        </div>
-                        <p className="person-projects">
-                          {projects.length}{" "}
-                          {projects.length === 1 ? "project" : "projects"}
-                          {projects[0]
-                            ? ` · ${projects[0].name}`
-                            : " · Ready to collaborate"}
-                        </p>
-                        <div className="person-card-footer">
-                          <button
-                            className="text-link"
-                            disabled={!ready}
-                            onClick={() => setSelectedPerson(p)}
-                          >
-                            View profile
-                            <ArrowRight size={14} />
-                          </button>
-                          {admin && p.role === "member" && (
-                            <Link
-                              aria-label={`Preview ${p.name}`}
-                              className="icon-button"
-                              href={`/?preview=${encodeURIComponent(p.id)}`}
-                            >
-                              <Eye size={16} />
-                            </Link>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-                {!filteredPeople.length && (
-                  <Empty title="No matching collaborators">
-                    Try a name or a different skill.
-                  </Empty>
-                )}
-              </>
-            )}
-            {screen === "profile" && (
-              <ProfileForm data={data} saved={refresh} />
-            )}
-          </>
-        )}
-        <footer className="workspace-footer">
-          <span>Venture Engineering Lab</span>
-          <span>
-            {data.demo ? "Sample data" : "Weekly research workspace"} ·{" "}
-            {data.timezone}
-          </span>
-        </footer>
-      </main>
+              )}
+            </>
+          )}
+        </main>
+      </div>
       {entry && (
         <EntryForm
           data={data}
@@ -1449,7 +1345,7 @@ export function LabApp({
           close={() => setEntry(null)}
           saved={refresh}
         />
-      )}
+      )}{" "}
       {editing && (
         <ProjectEditor
           project={editing.project}
@@ -1457,22 +1353,23 @@ export function LabApp({
           close={() => setEditing(null)}
           saved={refresh}
         />
-      )}
+      )}{" "}
       {person && (
         <PersonEditor
           person={person}
-          protectedAccount={data.protectedPersonIds?.includes(person.id)}
+          protectedAccount={Boolean(
+            data.protectedPersonIds?.includes(person.id),
+          )}
           close={() => setPerson(null)}
           saved={refresh}
         />
-      )}
+      )}{" "}
       {selectedPerson && (
         <Modal
           title={selectedPerson.name}
           close={() => setSelectedPerson(null)}
         >
-          <div className="modal-body person-detail">
-            <Avatar name={selectedPerson.name} />
+          <div className="modal-body">
             <p>
               {data.profiles?.find((p) => p.id === selectedPerson.id)
                 ?.position || "Lab member"}{" "}
@@ -1493,7 +1390,7 @@ export function LabApp({
               .filter((p) =>
                 data.assignments.some(
                   (a) =>
-                    a.personId === selectedPerson.id && a.projectId === p.id,
+                    a.projectId === p.id && a.personId === selectedPerson.id,
                 ),
               )
               .map((p) => (
@@ -1503,7 +1400,7 @@ export function LabApp({
                   href={projectHref(p.id)}
                 >
                   {p.name}
-                  <ArrowUpRight size={15} />
+                  <ChevronRight size={16} />
                 </Link>
               ))}
             {selectedPerson.email && (
@@ -1520,4 +1417,47 @@ export function LabApp({
       )}
     </div>
   );
+  function deadlinePanel() {
+    return (
+      <section className="panel dashboard-panel">
+        <div className="section-heading">
+          <h2>Upcoming deadlines</h2>
+          <HelpTip label="Deadline reminders">
+            Deadlines come from project milestones and your responsibilities.
+            Gmail checks them daily and emails members who have reminders
+            enabled.
+          </HelpTip>
+        </div>
+        <p className="section-copy">Next seven days and overdue work.</p>
+        {deadlines.slice(0, 5).map((d) => (
+          <Link
+            className="deadline-row"
+            href={projectHref(d.projectId)}
+            key={d.id}
+          >
+            <span
+              className={`deadline-date ${dayDifference(d.due, data.today) < 0 ? "late" : ""}`}
+            >
+              {shortDate(d.due)}
+            </span>
+            <div>
+              <strong>{d.title}</strong>
+              <p>{data.projects.find((p) => p.id === d.projectId)?.name}</p>
+              {dayDifference(d.due, data.today) < 0 && (
+                <small className="late-label">Overdue</small>
+              )}
+            </div>
+          </Link>
+        ))}
+        {!deadlines.length && (
+          <p className="quiet-empty">
+            No deadlines coming up. You’re clear for now.
+          </p>
+        )}
+        <Link className="section-link" href={href("/profile")}>
+          Email preferences <ArrowRight size={14} />
+        </Link>
+      </section>
+    );
+  }
 }

@@ -5,6 +5,7 @@ import type { Workspace } from "@/lib/types";
 import { STATUSES } from "@/lib/types";
 import { Modal } from "./modal";
 import { mutate } from "./forms";
+import { HelpTip } from "./help-tip";
 
 export function EntryForm({
   data,
@@ -101,11 +102,13 @@ export function EntryForm({
               <option disabled value="">
                 Choose a project
               </option>
-              {data.availableProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
+              {data.availableProjects
+                .filter((p) => own.some((a) => a.projectId === p.id))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
             </select>
           </label>
           {relevant.length > 1 && (
@@ -142,7 +145,13 @@ export function EntryForm({
             />
           </label>
           <fieldset className="status-field">
-            <legend>Status</legend>
+            <legend>
+              Your progress status{" "}
+              <HelpTip label="Progress status">
+                On track means your work is moving forward. Blocked means you
+                need help. Done means this responsibility is complete.
+              </HelpTip>
+            </legend>
             <div className="status-options">
               {STATUSES.map((s) => (
                 <label key={s} className={status === s ? "selected" : ""}>
@@ -152,7 +161,7 @@ export function EntryForm({
                     checked={status === s}
                     onChange={() => setStatus(s)}
                   />
-                  {s}
+                  {s === "Blocked" ? "Need help" : s}
                 </label>
               ))}
             </div>

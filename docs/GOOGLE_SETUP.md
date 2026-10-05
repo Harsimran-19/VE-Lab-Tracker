@@ -164,76 +164,74 @@ You should now have all nine variables:
 2. Open your app URL from Step 1 and sign in as `harsimran1869@gmail.com`.
 3. Click **Initialize lab spreadsheet** once. It fills the new Sheet with the workbook's projects and responsibilities; real reports start empty.
 4. In Google Cloud, open **Google Auth Platform → Audience → Publish app** and confirm **In production** before inviting the lab. If Google blocks a test account before publication, add it under **Audience → Test users**.
-5. On **Dashboard**, click **Invite the lab** and share the website. Google sign-in creates member accounts automatically.
-6. Test a different Google account in a private browser window. Open **Projects**, open a project, click **Join project**, then **Weekly update → Publish update**.
-7. Confirm the report appears in the Sheet’s **Updates** tab and in that project’s **Weekly updates**. All lab members can see the shared history. Your dashboard shows your projects; the admin dashboard shows reporting gaps and blockers.
-8. Open **account menu → My profile** to add your position, expertise and email preference. Search **People** to find collaborators.
-9. For an imported person with a blank email, the admin can use **People → pencil button** to add their exact Google email before their first login. This connects their existing workbook history. Everyone else can self-register.
+5. On **Lab overview**, click **Invite the lab** and share the website. Members sign in with their own Google account.
+6. Test another Google account in a private browser window. The welcome screen asks for **Your name**, then **Your projects**. Select a project and click **Open my workspace**.
+7. On **My work**, click **Write update**. Write progress, choose a status, and **Publish update**. The report appears in the Sheet’s **Updates** tab and the project’s **Weekly progress**.
+8. **My profile** is always visible in navigation. Add expertise and reminder preferences. **Teammates** lets people find collaborators.
+9. A member already listed in the spreadsheet can select **Existing lab name** during welcome. Their account works immediately. The admin confirms the previous-history connection under **Teammates → Connect existing lab profiles**; selecting a name alone never grants another person’s identity or admin role.
 
-**Already using the app?** Keep your current Sheet and its records. Do not initialize it again. The new `Profiles` and `Reminders` tabs are added automatically when first needed.
+**Already using the app?** Keep the current Sheet and its records. Do not initialize it again. Optional `Profiles`, `Onboarding`, and `Reminders` tabs are created automatically when needed. Existing members complete the welcome steps once; their existing Google email and reports remain attached to them.
 
 For cloud settings, review/save the changes and publish the environment configuration; I can then restart and check the connection here. Actual Google browser login still needs a reachable app URL with the matching redirect URI.
 
-## Step 8 — Activate email alerts
+## Step 8 — Free Gmail reminders (no purchased domain)
 
-The app uses **Resend to send mail** and **Vercel Cron to check deadlines daily**. All tracker records and delivery logs stay in Google Sheets. There is no database to create.
+Use an existing Gmail account as the sender. Google Sheets stores every record; Vercel checks deadlines daily. Keep using your free `.vercel.app` website URL.
 
-### 8A. Choose and verify the sender
+### 8A. Copy your Gmail sender address
 
-1. Create an account at [Resend](https://resend.com).
-2. Open **Domains → Add domain**. Enter a domain you own, such as `your-lab.org`.
-3. Copy **each DNS record Resend shows** into that domain’s DNS settings. Return to Resend and click **Verify**.
-4. Choose a sender at that domain, for example `lab@your-lab.org`.
+1. Choose the Gmail account to send lab reminders from. For testing, you can use `harsimran1869@gmail.com`.
+2. Open **Vercel → your project → Settings → Environment Variables → Production**.
+3. Create this variable:
 
-**Copy → paste into Vercel → Settings → Environment Variables → Production:**
+| Copy                                 | Paste into variable | Example                   |
+| ------------------------------------ | ------------------- | ------------------------- |
+| The complete Gmail address you chose | `GMAIL_USER`        | `harsimran1869@gmail.com` |
 
-| Copy from                          | Variable name | Exactly what to paste                              |
-| ---------------------------------- | ------------- | -------------------------------------------------- |
-| The sender at your verified domain | `EMAIL_FROM`  | `VE Lab <lab@your-lab.org>` using your real domain |
+### 8B. Create and copy a Google app password
 
-You cannot use a Gmail address as a Resend sender because you do not own `gmail.com`. Resend’s default test sender can send only to your own Resend account email; it is suitable for a first personal test, not the whole lab.
+1. Sign in to the **same Gmail account** from 8A.
+2. Open [Google Account Security](https://myaccount.google.com/security).
+3. Open **2-Step Verification** and turn it on if it is not already enabled.
+4. Open [App passwords](https://myaccount.google.com/apppasswords).
+5. Enter **VE Lab Tracker** as the app name and click **Create**.
+6. Google shows a **16-character app password**. Copy it now.
+7. Back in **Vercel → Settings → Environment Variables → Production**, create:
 
-### 8B. Create the email service key
+| Copy                                                | Paste into variable  | Example (fictional) |
+| --------------------------------------------------- | -------------------- | ------------------- |
+| The 16-character app password Google just generated | `GMAIL_APP_PASSWORD` | `abcdefghijklmnop`  |
 
-1. In Resend, open **API Keys → Create API key**.
-2. Give it **Sending access** for your verified domain.
-3. Copy the key shown once.
+Paste only the app password, without quotes. Spaces are accepted. **Do not paste your regular Google login password.** Keep this value in private environment settings, never chat or GitHub. App passwords may be unavailable for accounts restricted by their organization or Advanced Protection; in that case, choose an eligible Gmail account.
 
-| Copy from            | Variable name    | Destination                                 |
-| -------------------- | ---------------- | ------------------------------------------- |
-| Resend’s new API key | `RESEND_API_KEY` | Vercel → Environment Variables → Production |
+### 8C. Copy a scheduler secret
 
-Keep the key private. Do not paste it in chat or GitHub.
-
-### 8C. Protect the scheduler
-
-1. Open Google Cloud Shell again.
+1. Open Google Cloud Shell.
 2. Run `openssl rand -hex 32`.
 3. Copy the single output line.
+4. In the same Vercel environment settings, create:
 
-| Copy from                   | Variable name | Destination                                 |
-| --------------------------- | ------------- | ------------------------------------------- |
-| This new random output line | `CRON_SECRET` | Vercel → Environment Variables → Production |
+| Copy                       | Paste into variable |
+| -------------------------- | ------------------- |
+| The new random output line | `CRON_SECRET`       |
 
-This is a separate secret from `NEXTAUTH_SECRET`. Vercel uses it automatically to authenticate the scheduler. The app rejects unauthorized requests.
+Keep it separate from `NEXTAUTH_SECRET`. Vercel automatically includes this secret when invoking the daily scheduler.
 
-### 8D. Set the timezone and deploy
+### 8D. Set the timezone, redeploy and test
 
-| Variable name  | Exactly what to paste                                                           |
-| -------------- | ------------------------------------------------------------------------------- |
-| `LAB_TIMEZONE` | `Asia/Kolkata` for India, or `Asia/Hong_Kong` if the lab follows Hong Kong time |
+1. Create `LAB_TIMEZONE` with value **`Asia/Kolkata`** (or **`Asia/Hong_Kong`** if that is the lab’s timezone).
+2. Save the variables and **redeploy** in Vercel.
+3. Sign in as the admin, open **My profile → Lab email reminders**, and click **Send me a test email**.
+4. Check your Google inbox and spam folder. The app confirms Gmail acceptance, which does not by itself prove inbox delivery. Sample mode only previews the message.
+5. For a real deadline test, join a project yourself. Under **Manage project**, set a milestone due tomorrow. Keep **My profile → Send me deadline reminders** checked.
+6. In Vercel → **Cron Jobs**, confirm `/api/cron/reminders` appears. Use its **Run** control, if available, or wait for the next daily run. The schedule is **04:00 UTC** (09:30 India / 12:00 Hong Kong); Hobby execution can occur within that hour.
+7. Confirm the deadline email arrives and a `Reminders` row has `sentAt` filled in your Sheet.
 
-1. Save the variables and **redeploy**.
-2. In Vercel → **Cron Jobs**, confirm `/api/cron/reminders` appears. The included `vercel.json` schedules one daily check at **04:00 UTC** (09:30 India / 12:00 Hong Kong). Hobby scheduling can run anywhere within that hour.
-3. Admins create deadline dates using **Projects → open project → Manage project**, or **Team & responsibilities → Assign/Edit**.
-4. Members opt in or out in **My profile**. The default is enabled. Recipients must have an actual Google email and belong to the project.
-5. For a first real test, join a project with your own Google account and set a milestone due tomorrow. Use the next scheduled run or the **Run** control in Vercel’s Cron Jobs view. Check **Resend → Emails** for acceptance/delivery and your inbox. Do not infer delivery from the app’s “configured” label alone.
+Each active deadline gets one upcoming reminder within three days, one on its due date, and one overdue reminder within seven days after. Completed work and opted-out members are excluded. This uses ordinary Gmail sending limits, suitable for a small team.
 
-Each deadline gets **one upcoming reminder within three days**, **one on its due date**, and **one overdue reminder within seven days after**. Missing a daily run can recover within those windows. Completed responsibilities stop their reminders. Changing a deadline creates a new reminder cycle. The scheduler does not send email in local sample mode.
+**If a send is uncertain:** Gmail SMTP cannot guarantee duplicate suppression. The app reserves a Sheet row before sending and holds unconfirmed rows instead of resending automatically. An admin should check the sender’s Gmail mail history and the recipient before resolving the row. If accepted, fill `sentAt` and `providerId` (the message ID); delete only that specific pending row if you have confirmed it was not accepted and want another attempt. Never delete the whole tab or reinitialize the Sheet. Concurrent scheduler runs should be avoided because Sheets has no transaction lock.
 
-The admin Dashboard shows email configuration and counts of accepted/pending deliveries. If a delivery remains unconfirmed for 23 hours, the app holds it for review to avoid sending a duplicate after Resend’s 24-hour idempotency window. Inspect the corresponding email in Resend. If delivered, fill that `Reminders` row’s `sentAt` and `providerId`; if you confirm it was never accepted, delete only that pending row so a future run can retry. Never delete the whole tab or initialize the Sheet again.
-
-Email service credentials were not available during development. Automated delivery was tested with mocked provider responses; real sender verification, delivery and Vercel scheduling require the steps above.
+Old `RESEND_API_KEY` and `EMAIL_FROM` settings are no longer used and can be removed. Automated tests mock Gmail; real delivery and Vercel scheduling require the configuration above.
 
 ## Complete fictional ENV example
 
@@ -254,8 +252,8 @@ GOOGLE_CLIENT_ID=123456789000-fictional-client.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-FICTIONAL-NOT-A-REAL-SECRET
 NEXTAUTH_SECRET=FICTIONAL_SESSION_SECRET_REPLACE_WITH_GENERATED_VALUE
 
-EMAIL_FROM="VE Lab <lab@fictional-lab.org>"
-RESEND_API_KEY=re_FICTIONAL_EMAIL_KEY_NOT_VALID
+GMAIL_USER=fictional-sender@gmail.com
+GMAIL_APP_PASSWORD=FICTIONAL_APP_PASSWORD_NOT_VALID
 CRON_SECRET=FICTIONAL_CRON_SECRET_REPLACE_WITH_64_RANDOM_HEX_CHARACTERS
 LAB_TIMEZONE=Asia/Kolkata
 ```
@@ -273,4 +271,4 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | Invalid private key                  | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines                        |
 | Original workbook attached directly  | Step 2: use a new blank Sheet, then initialize it in Step 7                                                 |
 | Existing app Sheet / changed headers | Restore the expected headers from `lib/sheets.ts`. Keep the current Sheet and records; do not reinitialize  |
-| Deadline emails not arriving         | Step 8: verified sender, all three mail variables, redeploy, Cron Jobs and Resend delivery logs             |
+| Deadline emails not arriving         | Step 8: Gmail address + app password + cron secret, redeploy, test email, then Cron Jobs                    |

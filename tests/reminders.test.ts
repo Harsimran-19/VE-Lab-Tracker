@@ -1,11 +1,13 @@
-import test from "node:test";
+import test, { mock } from "node:test";
+import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import { gmailConfiguration, sendGmail } from "../lib/mail";
 import assert from "node:assert/strict";
 import {
   deliverReminders,
   planReminders,
   reminderMessage,
   requireCron,
-  sendReminder,
 } from "../lib/reminders";
 import { dateInZone, reportedThisWeek, startOfWeek } from "../lib/calendar";
 import { profileSchema } from "../lib/schema";
@@ -133,7 +135,7 @@ test("cron requires a strong secret and rejects missing or incorrect bearer head
     secret,
   );
 });
-test("delivery reserves before sending and a retry reuses the provider idempotency key", async () => {
+test("delivery reserves before sending and holds uncertain Gmail acceptance without resending", async () => {
   const store = fixture();
   const order: string[] = [];
   const keys: string[] = [];
@@ -162,19 +164,20 @@ test("delivery reserves before sending and a retry reuses the provider idempoten
   assert.deepEqual(order, ["reserve", "send", "confirm"]);
   failConfirm = false;
   assert.deepEqual(await deliverReminders(store, storage, now), {
-    sent: 1,
+    sent: 0,
     failed: 0,
-    needsReview: 0,
+    needsReview: 1,
   });
-  assert.deepEqual(keys, [keys[0], keys[0]]);
+  assert.equal(keys.length, 1);
   assert.equal(store.reminders!.length, 1);
+  store.reminders![0].sentAt = now.toISOString();
   assert.deepEqual(await deliverReminders(store, storage, now), {
     sent: 0,
     failed: 0,
     needsReview: 0,
   });
 });
-test("uncertain old deliveries require review after the provider's idempotency window", async () => {
+test("uncertain deliveries are held even within the first day because SMTP has no idempotency", async () => {
   const store = fixture();
   store.reminders = [planReminders(store, now)[0].reminder];
   const never = async () => {
@@ -217,43 +220,77 @@ test("profile updates cannot spoof identity, email or access role", () => {
     membershipId("person-b", "P01"),
   );
 });
-test("provider request uses the reserved ID and rejects unconfirmed or failed responses", async () => {
-  const originalFetch = globalThis.fetch;
-  const names = ["RESEND_API_KEY", "EMAIL_FROM", "CRON_SECRET", "NEXTAUTH_URL"];
+test("Gmail transport uses TLS and app-password auth and requires recipient acceptance", async () => {
+  const names = ["GMAIL_USER", "GMAIL_APP_PASSWORD"];
   const saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
   Object.assign(process.env, {
-    RESEND_API_KEY: "unit-test-not-a-real-key",
-    EMAIL_FROM: "Lab <lab@example.com>",
-    CRON_SECRET: "unit-test-cron-secret-value-not-real",
-    NEXTAUTH_URL: "https://lab.example.com",
+    GMAIL_USER: "sender@gmail.com",
+    GMAIL_APP_PASSWORD: "abcd efgh ijkl mnop",
+  });
+  let closed = 0;
+  const transport = nodemailer.createTransport({ jsonTransport: true });
+  const intercepted = mock.method(
+    nodemailer,
+    "createTransport",
+    (options: SMTPTransport.Options) => {
+      assert.equal(options.host, "smtp.gmail.com");
+      assert.equal(options.port, 465);
+      assert.equal(options.secure, true);
+      assert.deepEqual(options.auth, {
+        user: "sender@gmail.com",
+        pass: "abcdefghijklmnop",
+      });
+      return transport;
+    },
+  );
+  const send = mock.method(
+    transport,
+    "sendMail",
+    async (message: nodemailer.SendMailOptions) => {
+      assert.equal(message.to, "member@example.com");
+      assert.ok(
+        message.from &&
+          typeof message.from !== "string" &&
+          !Array.isArray(message.from),
+      );
+      assert.equal(message.from.address, "sender@gmail.com");
+      assert.equal(message.messageId, "<reserved-id@gmail.com>");
+      assert.equal(message.subject, "Safe subject");
+      return { accepted: ["member@example.com"], messageId: "accepted-id" };
+    },
+  );
+  mock.method(transport, "close", () => {
+    closed++;
   });
   try {
-    const item = planReminders(fixture(), now)[0];
-    globalThis.fetch = async (url, init) => {
-      assert.equal(String(url), "https://api.resend.com/emails");
-      assert.equal(
-        new Headers(init!.headers).get("Idempotency-Key"),
-        item.reminder.id,
-      );
-      const body = JSON.parse(String(init!.body));
-      assert.deepEqual(body.to, ["member@example.com"]);
-      assert.equal(body.text.includes("/projects/P10"), true);
-      return new Response(JSON.stringify({ id: "provider-id" }), {
-        status: 200,
-      });
+    const message = {
+      to: "member@example.com",
+      subject: "Safe\nsubject",
+      text: "Deadline approaching",
+      id: "reserved-id",
     };
-    assert.equal(await sendReminder(item), "provider-id");
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "private upstream details" }), {
-        status: 429,
-      });
+    assert.equal(await sendGmail(message), "accepted-id");
+    send.mock.mockImplementation(async () => ({
+      accepted: [],
+      messageId: "rejected-id",
+    }));
     await assert.rejects(
-      sendReminder(item),
-      (e: unknown) =>
-        e instanceof AppError && !e.message.includes("private upstream"),
+      sendGmail(message),
+      (e) => e instanceof AppError && e.status === 503,
     );
+    send.mock.mockImplementation(async () => {
+      throw new Error("private SMTP credential details");
+    });
+    await assert.rejects(
+      sendGmail(message),
+      (e) => e instanceof AppError && !e.message.includes("private SMTP"),
+    );
+    assert.equal(closed, 3);
+    delete process.env.GMAIL_APP_PASSWORD;
+    assert.throws(gmailConfiguration, AppError);
   } finally {
-    globalThis.fetch = originalFetch;
+    intercepted.mock.restore();
+    mock.restoreAll();
     for (const name of names) {
       if (saved[name] === undefined) delete process.env[name];
       else process.env[name] = saved[name];

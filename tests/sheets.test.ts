@@ -346,6 +346,12 @@ test("shared read includes profiles and server-side reminder records from upgrad
       ],
     ],
   });
+  ranges.valueRanges.splice(5, 0, {
+    values: [
+      [...EXTRA_TABLES.Onboarding],
+      ["hars", "2026-10-05T00:00:00Z", "hars", "linked", "member@example.com"],
+    ],
+  });
   globalThis.fetch = async (input) =>
     response(
       String(input).includes("values:batchGet")
@@ -360,6 +366,7 @@ test("shared read includes profiles and server-side reminder records from upgrad
           },
     );
   const store = await readSheet();
+  assert.equal(store.onboarding![0].status, "linked");
   assert.equal(store.profiles![0].expertise, "LLMs");
   assert.equal(store.profiles![0].reminders, "false");
   assert.equal(store.reminders![0].providerId, "provider-1");
@@ -403,4 +410,29 @@ test("edits to duplicate signup and join rows retain the latest name, role and w
     readSheet(),
     (e: unknown) => e instanceof AppError && e.status === 409,
   );
+});
+
+test("imported work moves every duplicate row while retaining responsibility IDs", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.includes(encodeURIComponent("'Assignments'!A:A")))
+      return response({ values: [["id"], ["A004"], ["other"], ["A004"]] });
+    const values = JSON.parse(String(init!.body)).values;
+    assert.equal(values[0][0], "A004");
+    assert.equal(values[0][2], "new-member");
+    return response({});
+  };
+  await replaceSheet(
+    "Assignments",
+    {
+      ...seed.assignments.find((a) => a.id === "A004")!,
+      personId: "new-member",
+    },
+    true,
+  );
+  assert.equal(urls.length, 3);
+  assert.ok(urls[1].includes(encodeURIComponent("'Assignments'!A2:Z2")));
+  assert.ok(urls[2].includes(encodeURIComponent("'Assignments'!A4:Z4")));
 });

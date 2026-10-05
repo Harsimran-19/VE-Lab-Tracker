@@ -26,11 +26,7 @@ export async function GET(request: Request) {
       {
         reserve: addReminder,
         confirm: saveReminder,
-        send: async (item) => {
-          // Stay below Resend's default two requests per second.
-          await new Promise((resolve) => setTimeout(resolve, 650));
-          return sendReminder(item);
-        },
+        send: sendReminder,
       },
       new Date(),
       process.env.LAB_TIMEZONE || "Asia/Kolkata",

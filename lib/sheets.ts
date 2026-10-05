@@ -2,6 +2,7 @@ import "server-only";
 import { JWT } from "google-auth-library";
 import { AppError } from "./access";
 import type {
+  Onboarding,
   Assignment,
   Collaborator,
   Person,
@@ -50,6 +51,7 @@ export const TABLES = {
   ],
 } as const;
 export const EXTRA_TABLES = {
+  Onboarding: ["id", "completedAt", "rosterId", "status", "requesterEmail"],
   Profiles: ["id", "position", "expertise", "bio", "reminders"],
   Reminders: [
     "id",
@@ -71,7 +73,8 @@ type Entity =
   | Collaborator
   | Update
   | Profile
-  | Reminder;
+  | Reminder
+  | Onboarding;
 export class SheetSetupError extends AppError {
   constructor() {
     super("The new spreadsheet has not been initialized yet.", 409);
@@ -174,6 +177,12 @@ export async function readSheet(): Promise<Store> {
   )
     throw new SheetSetupError();
   const store: Store = {
+    onboarding: names.has("Onboarding")
+      ? toObjects<Onboarding>(
+          ranges[tables.indexOf("Onboarding")],
+          EXTRA_TABLES.Onboarding,
+        )
+      : [],
     projects: toObjects<Project>(ranges[0], TABLES.Projects),
     people: toObjects<Person>(ranges[1], TABLES.People),
     assignments: toObjects<Assignment>(ranges[2], TABLES.Assignments),
@@ -232,6 +241,9 @@ export async function readSheet(): Promise<Store> {
   });
   store.reminders = store.reminders!.filter(
     (r, i, rows) => rows.findLastIndex((row) => row.id === r.id) === i,
+  );
+  store.onboarding = store.onboarding!.filter(
+    (r, i, rows) => rows.findLastIndex((v) => v.id === r.id) === i,
   );
   return store;
 }
@@ -292,17 +304,23 @@ export async function ensureExtraTable(table: keyof typeof EXTRA_TABLES) {
   );
 }
 export async function upsertProfile(profile: Profile) {
-  await ensureExtraTable("Profiles");
-  const data = await request(`/values/${encodeURIComponent("'Profiles'!A:A")}`);
+  return upsertExtra("Profiles", profile);
+}
+export async function upsertExtra(
+  table: keyof typeof EXTRA_TABLES,
+  profile: Profile | Onboarding,
+) {
+  await ensureExtraTable(table);
+  const data = await request(`/values/${encodeURIComponent(`'${table}'!A:A`)}`);
   const index = (data.values ?? []).findLastIndex(
     (row: string[]) => row[0] === profile.id,
   );
-  if (index < 1) return appendSheet("Profiles", profile);
+  if (index < 1) return appendSheet(table, profile);
   await request(
-    `/values/${encodeURIComponent(`'Profiles'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`,
+    `/values/${encodeURIComponent(`'${table}'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`,
     {
       method: "PUT",
-      body: JSON.stringify({ values: [cells("Profiles", profile)] }),
+      body: JSON.stringify({ values: [cells(table, profile)] }),
     },
   );
 }
@@ -315,7 +333,11 @@ export async function appendSheet(table: Table, entity: Entity) {
     },
   );
 }
-export async function replaceSheet(table: Table, entity: Entity) {
+export async function replaceSheet(
+  table: Table,
+  entity: Entity,
+  allMatchingRows = false,
+) {
   const result = await request(
     `/values/${encodeURIComponent(`'${table}'!A:A`)}`,
   );
@@ -327,13 +349,22 @@ export async function replaceSheet(table: Table, entity: Entity) {
       "This record no longer exists. Refresh and try again.",
       404,
     );
-  await request(
-    `/values/${encodeURIComponent(`'${table}'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ values: [cells(table, entity)] }),
-    },
-  );
+  const indices = allMatchingRows
+    ? (result.values ?? []).flatMap((row: string[], i: number) =>
+        i > 0 && row[0] === entity.id ? [i] : [],
+      )
+    : [index];
+  // Imported history may include identical concurrent appends. Move every
+  // physical copy together so the next read sees one consistent identity.
+  for (const rowIndex of indices) {
+    await request(
+      `/values/${encodeURIComponent(`'${table}'!A${rowIndex + 1}:Z${rowIndex + 1}`)}?valueInputOption=RAW`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ values: [cells(table, entity)] }),
+      },
+    );
+  }
 }
 export async function initializeSheet(seed: Store) {
   const meta = await request("?fields=sheets.properties(title,sheetId)");

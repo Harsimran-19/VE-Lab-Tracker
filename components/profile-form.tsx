@@ -33,7 +33,7 @@ export function ProfileForm({
     try {
       await mutate("/api/profile", form, "PATCH");
       await saved();
-      setNotice("Profile saved. Your expertise is visible in People.");
+      setNotice("Profile saved. Your expertise is visible in Teammates.");
     } catch (error) {
       setError((error as Error).message);
     } finally {

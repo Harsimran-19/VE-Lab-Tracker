@@ -41,7 +41,7 @@ test("dashboard summarizes the lab while projects and people have separate pages
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await sample(page, "admin");
   await expect(
-    page.getByRole("heading", { name: "Lab dashboard", exact: true }),
+    page.getByRole("heading", { name: "Lab overview", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Needs attention" }),
@@ -76,7 +76,7 @@ test("dashboard summarizes the lab while projects and people have separate pages
   ).toBeVisible();
   await page
     .getByRole("navigation")
-    .getByRole("link", { name: "People", exact: true })
+    .getByRole("link", { name: "Teammates", exact: true })
     .click();
   await expect(page).toHaveURL(/\/people$/);
   await expect(page.locator(".person-card")).toHaveCount(11);
@@ -88,11 +88,11 @@ test("member reports progress in a project; authorship, previous plans and retri
 }) => {
   await sample(page, "member");
   await expect(
-    page.getByRole("heading", { name: "My dashboard", exact: true }),
+    page.getByRole("heading", { name: "My work", exact: true }),
   ).toBeVisible();
   await page.goto("/projects/P10");
   await page
-    .getByRole("button", { name: "Weekly update", exact: true })
+    .getByRole("button", { name: "Write weekly update", exact: true })
     .click();
   const dialog = page.getByRole("dialog", { name: "Weekly update" });
   await expect(
@@ -102,7 +102,7 @@ test("member reports progress in a project; authorship, previous plans and retri
   await dialog
     .getByLabel("Progress made")
     .fill("Browser test: completed pilot model comparison.");
-  await dialog.getByRole("radio", { name: "Blocked", exact: true }).check();
+  await dialog.getByRole("radio", { name: "Need help", exact: true }).check();
   await dialog
     .getByLabel(/Blockers or help needed/)
     .fill("Browser test: need source documents.");
@@ -149,10 +149,17 @@ test("new Google-style member joins a project without admin setup and sees team 
 }) => {
   await sample(page, "new");
   await expect(
-    page.getByRole("heading", { name: "Your account is ready." }),
+    page.getByRole("heading", { name: "Let’s get to know you." }),
+  ).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  await page.getByLabel("Your name", { exact: true }).fill("New test member");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Choose projects later" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Choose your first project" }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Explore projects", exact: true })
+    .getByRole("link", { name: "Choose a project", exact: true })
     .click();
   await expect(page.locator(".research-card")).toHaveCount(15);
   await expect(
@@ -164,7 +171,7 @@ test("new Google-style member joins a project without admin setup and sees team 
   ).toContainText("Lin");
   await page.getByRole("button", { name: "Join project", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Weekly update", exact: true }),
+    page.getByRole("button", { name: "Write weekly update", exact: true }),
   ).toBeVisible();
   const before = await (await page.request.get("/api/workspace")).json();
   const repeat = await jsonWrite(page, "/api/join", { projectId: "P04" });
@@ -178,7 +185,7 @@ test("new Google-style member joins a project without admin setup and sees team 
   ).toHaveLength(1);
   expect(joined.assignments.length).toBe(before.assignments.length);
   await page
-    .getByRole("button", { name: "Weekly update", exact: true })
+    .getByRole("button", { name: "Write weekly update", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog
@@ -201,7 +208,13 @@ test("profiles support expertise discovery and members cannot change identities 
 }) => {
   await sample(page, "new");
   await page
-    .getByRole("link", { name: "Add your expertise to your profile" })
+    .getByLabel("Your name", { exact: true })
+    .fill("Expertise test member");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Choose projects later" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "My profile", exact: true })
     .click();
   await expect(page).toHaveURL(/\/profile$/);
   await page.getByLabel("Name", { exact: true }).fill("Expertise test member");
@@ -241,7 +254,7 @@ test("profiles support expertise discovery and members cannot change identities 
   expect(forged.status()).toBe(400);
   await page
     .getByRole("navigation")
-    .getByRole("link", { name: "People", exact: true })
+    .getByRole("link", { name: "Teammates", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "Search people and expertise" })
@@ -368,7 +381,7 @@ test("production member preview follows navigation and protects the real adminis
   await page.goto("/people");
   await page.getByRole("link", { name: "Preview Hars", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "My dashboard", exact: true }),
+    page.getByRole("heading", { name: "My work", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("Member preview")).toContainText("Hars");
   await page
@@ -381,7 +394,7 @@ test("production member preview follows navigation and protects the real adminis
   ).toHaveCount(0);
   await page.goto("/projects/P10?preview=hars");
   await page
-    .getByRole("button", { name: "Weekly update", exact: true })
+    .getByRole("button", { name: "Write weekly update", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Saving disabled in preview" }),
@@ -425,7 +438,7 @@ test("mobile navigation, project workspace and weekly form remain usable", async
     ),
   ).toBe(true);
   await page
-    .getByRole("button", { name: "Weekly update", exact: true })
+    .getByRole("button", { name: "Write weekly update", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Progress made").fill("Mobile report test");
@@ -496,4 +509,129 @@ test("project deep links support browser history and missing projects show a hel
   await expect(
     page.getByRole("heading", { name: "Project not found." }),
   ).toBeVisible();
+});
+
+test("welcome can select an imported name, keeps Google identity, and admin confirms previous work", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await sample(page, "new");
+  await expect(
+    page.getByRole("heading", { name: "Let’s get to know you." }),
+  ).toBeVisible();
+  await expect(page.getByRole("navigation")).toHaveCount(0);
+  const help = page.getByRole("button", {
+    name: "Help: Connecting previous work",
+  });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(help).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("note")).toContainText(
+    "nobody can claim another person’s work",
+  );
+  await page.keyboard.press("Escape");
+  await expect(help).toHaveAttribute("aria-expanded", "false");
+  await page.getByLabel("Existing lab name").selectOption("lin");
+  await expect(page.getByLabel("Your name", { exact: true })).toHaveValue(
+    "Lin",
+  );
+  await page
+    .getByLabel("Your name", { exact: true })
+    .fill("Lin preferred name");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  const before = await (await page.request.get("/api/workspace")).json();
+  const memberId = before.identity.personId;
+  await page.screenshot({
+    path: "test-results/welcome-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Open my workspace", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "My work", exact: true }),
+  ).toBeVisible();
+  const pending = await (await page.request.get("/api/workspace")).json();
+  expect(pending.identity.personId).toBe(memberId);
+  expect(pending.identity.role).toBe("member");
+  expect(pending.people.find((p: { id: string }) => p.id === "lin").email).toBe(
+    "",
+  );
+  expect(
+    pending.updates.find((u: { progress: string }) =>
+      u.progress.startsWith("Sample: finished coding"),
+    ).personId,
+  ).toBe("lin");
+  expect(
+    (
+      await jsonWrite(page, "/api/roster-links", {
+        id: memberId,
+        approve: true,
+      })
+    ).status(),
+  ).toBe(403);
+  expect((await jsonWrite(page, "/api/email-test", {})).status()).toBe(403);
+  await sample(page, "admin");
+  await page.goto("/people");
+  await page
+    .getByRole("button", {
+      name: `Confirm connection for ${pending.identity.email}`,
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Previous work connected",
+  );
+  const connected = await (await page.request.get("/api/workspace")).json();
+  expect(connected.people.some((p: { id: string }) => p.id === "lin")).toBe(
+    false,
+  );
+  expect(
+    connected.people.find((p: { id: string }) => p.id === memberId).email,
+  ).toBe(pending.identity.email);
+  expect(
+    connected.updates.find((u: { progress: string }) =>
+      u.progress.startsWith("Sample: finished coding"),
+    ).personId,
+  ).toBe(memberId);
+  expect(
+    connected.assignments.find((a: { id: string }) => a.id === "A004").personId,
+  ).toBe(memberId);
+  expect(
+    connected.onboarding.find((r: { id: string }) => r.id === memberId).status,
+  ).toBe("approved");
+  expect(
+    (
+      await jsonWrite(page, "/api/roster-links", {
+        id: memberId,
+        approve: true,
+      })
+    ).status(),
+  ).toBe(409);
+});
+
+test("admin tests their own email from profile and sample mode sends nothing", async ({
+  page,
+}) => {
+  await sample(page, "admin");
+  await page.goto("/profile");
+  await expect(
+    page.getByRole("heading", { name: "Lab email reminders" }),
+  ).toBeVisible();
+  expect(
+    (
+      await jsonWrite(page, "/api/email-test", {
+        to: "someone-else@example.com",
+      })
+    ).status(),
+  ).toBe(400);
+  await page
+    .getByRole("button", { name: "Preview test email", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("No email was sent");
 });

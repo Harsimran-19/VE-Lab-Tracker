@@ -42,9 +42,16 @@ export function scopeStore(store: Store, identity: Identity): Store {
   // Lab members collaborate through shared project history and expertise.
   // Delivery logs remain server-only; write permission is checked separately.
   void identity;
-  const { reminders: _reminders, ...shared } = store;
+  const { reminders: _reminders, onboarding: _onboarding, ...shared } = store;
+  void _onboarding;
   void _reminders;
-  return { ...shared, profiles: store.profiles ?? [] };
+  return {
+    ...shared,
+    profiles: store.profiles ?? [],
+    onboarding: (store.onboarding ?? []).filter(
+      (r) => identity.role === "admin" || r.id === identity.personId,
+    ),
+  };
 }
 export function requireAdmin(identity: Identity) {
   if (identity.role !== "admin")
@@ -110,23 +117,32 @@ export function workspaceFor(
   const today = dateInZone(new Date(), timezone);
   return {
     ...scoped,
-    people: scoped.people.map((p) =>
-      admins.includes(p.email.toLowerCase())
-        ? { ...p, role: "admin" as const }
-        : p,
-    ),
+    people: scoped.people
+      .filter(
+        (p) =>
+          !(store.onboarding ?? []).some(
+            (r) => r.id === p.id && r.status === "archived",
+          ),
+      )
+      .map((p) =>
+        admins.includes(p.email.toLowerCase())
+          ? { ...p, role: "admin" as const }
+          : p,
+      ),
     availableProjects: store.projects.map(({ id, name }) => ({ id, name })),
     identity,
     demo,
     needsSetup: !store.projects.length && !store.people.length,
+    needsOnboarding:
+      identity.role !== "admin" &&
+      !(store.onboarding ?? []).some(
+        (r) => r.id === identity.personId && r.completedAt,
+      ),
     timezone,
     today,
     weekStart: startOfWeek(today),
     emailReady: Boolean(
-      process.env.RESEND_API_KEY &&
-        process.env.EMAIL_FROM &&
-        (process.env.CRON_SECRET?.length ?? 0) >= 32 &&
-        !demo,
+      process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && !demo,
     ),
     ...(identity.role === "admin"
       ? {
@@ -172,6 +188,7 @@ export function memberPreview(
   };
   return {
     ...workspaceFor(store, memberIdentity, demo, admins),
+    needsOnboarding: false,
     preview: { adminName: identity.name },
   };
 }
