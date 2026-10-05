@@ -4,6 +4,7 @@ import { fixture, manager, member, now } from "./fixture";
 import {
   planProjectChange,
   planWorkstreamChange,
+  planProjectCreation,
 } from "../lib/project-details";
 import { planEntry } from "../lib/entries";
 import { planReminders } from "../lib/reminders";
@@ -30,6 +31,114 @@ const entry = {
   needsHelp: false,
   blockers: "",
 };
+
+test("project creation saves its initial direction, lead and deadline together", () => {
+  const s = fixture();
+  const input = {
+    id: "55555555-5555-4555-8555-555555555555",
+    name: "New study",
+    goal: "Understand collaboration",
+    phase: "Data collection",
+    leadId: member.personId,
+    priority: "Push",
+    methods: "Interviews",
+    milestone: "Finish pilot",
+    due: "2026-11-02",
+    fullTitle: "Collaboration in Research Teams",
+    publicationStatus: "In preparation",
+    targetJournal: "Research Journal",
+    altJournal: "",
+    targetConference: "",
+  };
+  const project = planProjectCreation(s, manager, input);
+  assert.deepEqual(project, { ...input, state: "active" });
+  s.projects.push(project);
+  assert.deepEqual(planProjectCreation(s, manager, input), project);
+  assert.throws(
+    () => planProjectCreation(s, manager, { ...input, priority: "Background" }),
+    /already exists/,
+  );
+  assert.throws(() => planProjectCreation(s, member, input), /Manager access/);
+  assert.throws(
+    () => planProjectCreation(s, manager, { ...input, leadId: "missing" }),
+    /lead/,
+  );
+  for (const invalid of [
+    { milestone: "", due: input.due },
+    { milestone: input.milestone, due: "" },
+    { due: "2026-02-30" },
+    { phase: "Unknown" },
+    { priority: "Unknown" },
+  ])
+    assert.throws(() =>
+      planProjectCreation(s, manager, { ...input, ...invalid }),
+    );
+});
+
+test("older creation requests retain safe defaults; consolidated settings preserve responsibilities and resources", () => {
+  const s = fixture();
+  const created = planProjectCreation(s, manager, {
+    id: "55555555-5555-4555-8555-555555555555",
+    name: "Study",
+    goal: "Learn",
+  });
+  assert.equal(created.phase, "Idea");
+  assert.equal(created.priority, "Steady");
+  assert.equal(created.milestone, "");
+  const links = [{ label: "Research folder", url: "https://example.com" }];
+  s.projects.push({
+    ...created,
+    workstreams: [stream],
+    links,
+    notes: "Keep this context",
+    state: "on-hold",
+  });
+  const { state: _state, ...fields } = created;
+  const changed = planProjectChange(s, manager, {
+    ...fields,
+    action: "settings",
+    phase: "Writing",
+    leadId: member.personId,
+    milestone: "First draft",
+    due: "2026-12-01",
+    publicationStatus: "In preparation",
+  });
+  assert.equal(changed.phase, "Writing");
+  assert.equal(changed.leadId, member.personId);
+  assert.equal(changed.milestone, "First draft");
+  assert.equal(changed.state, "on-hold");
+  assert.deepEqual(changed.workstreams, [stream]);
+  assert.deepEqual(changed.links, links);
+  assert.equal(changed.notes, "Keep this context");
+  const {
+    workstreams: _workstreams,
+    links: _links,
+    notes: _notes,
+    state: _held,
+    ...setup
+  } = changed;
+  const cleared = planProjectChange(s, manager, {
+    ...setup,
+    action: "settings",
+    milestone: "",
+    due: "",
+  });
+  assert.equal(cleared.milestone, "");
+  assert.equal(cleared.due, "");
+  assert.throws(
+    () => planProjectChange(s, member, { ...setup, action: "settings" }),
+    /Manager access/,
+  );
+  assert.throws(
+    () =>
+      planProjectChange(s, manager, {
+        ...setup,
+        action: "settings",
+        leadId: "missing",
+      }),
+    /lead/,
+  );
+});
 
 test("research details are optional, lead must be real, and resource links must be safe", () => {
   const s = fixture();

@@ -13,6 +13,11 @@
 
 /* Optional research context stays behind a small number of disclosures. */
 .project-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   color: var(--muted);
   font-size: 13px;
   margin: -8px 0 20px;
@@ -1385,6 +1390,18 @@ fieldset {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
+}
+.setup-section {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.setup-section h3 {
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .check-label {
   display: flex;

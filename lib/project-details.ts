@@ -1,6 +1,49 @@
 import { AppError, requireAdmin } from "./access";
 import type { Identity, Project, Store } from "./types";
-import { projectChangeSchema, workstreamChangeSchema } from "./schema";
+import {
+  newProjectSchema,
+  projectChangeSchema,
+  workstreamChangeSchema,
+} from "./schema";
+
+export function planProjectCreation(
+  store: Store,
+  identity: Identity,
+  raw: unknown,
+): Project {
+  requireAdmin(identity);
+  const input = newProjectSchema.parse(raw);
+  if (input.leadId && !store.people.some((p) => p.id === input.leadId))
+    throw new AppError("Choose a lead from the lab.");
+  const existing = store.projects.find((p) => p.id === input.id);
+  if (existing) {
+    if (
+      Object.entries(input).some(
+        ([key, value]) => existing[key as keyof Project] !== value,
+      )
+    )
+      throw new AppError(
+        "This project already exists. Refresh to review it.",
+        409,
+      );
+    return existing;
+  }
+  return {
+    phase: "Idea",
+    leadId: "",
+    priority: "Steady",
+    methods: "",
+    milestone: "",
+    due: "",
+    fullTitle: "",
+    publicationStatus: "",
+    targetJournal: "",
+    altJournal: "",
+    targetConference: "",
+    ...input,
+    state: "active",
+  };
+}
 
 export function planProjectChange(
   store: Store,
@@ -13,6 +56,13 @@ export function planProjectChange(
   if (!existing) throw new AppError("Project not found.", 404);
   const project = { ...existing };
   switch (input.action) {
+    case "settings": {
+      if (input.leadId && !store.people.some((p) => p.id === input.leadId))
+        throw new AppError("Choose a lead from the lab.");
+      const { id: _id, action: _action, ...settings } = input;
+      Object.assign(project, settings);
+      break;
+    }
     case "goal":
       project.name = input.name;
       project.goal = input.goal;

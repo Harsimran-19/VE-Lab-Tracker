@@ -4,17 +4,17 @@ A simple weekly research tracker for one Venture Engineering Lab team. Google ha
 
 ## Workflow
 
-Manager: sign in → create a project with its name and goal → share the website → review weekly progress, missing updates, help requests and deadlines.
+Manager: sign in → create a project with its direction, lead, phase, priority and first milestone → share the website → review weekly progress, missing updates, help requests and deadlines.
 
 Member: Google sign-in → confirm name → choose projects → My work → report accomplishments and next step. “I need help” reveals a required blocker explanation. Saving again edits the same current-week report.
 
 - **Home:** manager lab overview or the member's own work.
 - **Projects:** discover and join active projects, read shared reports, or review completed projects.
-- **Project page:** Progress opens first, with reports, members and optional responsibilities. Project details contains the full research title, lead, priority, methods, resources, notes, publication plan and external collaborators. Managers set the research phase and milestone, or pause, complete and reopen the project. Earlier weeks are available when history exists.
+- **Project page:** Progress opens first, with reports, members and optional responsibilities. A visible **Project settings** button lets managers edit the name, goal, lead, priority, phase, methods, milestone and publication plan together. Project details contains research context, resources, notes and external collaborators. Managers can pause, complete and reopen the project. Earlier weeks are available when history exists.
 - **Team:** every actual signup, including people without projects. Both roles can open a member’s contact details and project links from this directory or a report/project member name.
-- **Account:** name and email preference, with academic role and affiliation inside an optional research profile. Managers also set the reporting day, time and timezone and test their email delivery.
+- **Account:** name, academic role, affiliation and email preference are visible directly. Role and affiliation are optional and appear in the shared team directory. Managers also set the reporting day, time and timezone and test their email delivery.
 
-Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. Research and publication details can be added later. Managers assign responsibilities to people who have joined the project; owners can update their own status. Responsibilities can be archived and restored. External collaborators are project contacts, not signups or reporting members. Team remains a shared directory of actual signups.
+The creation form asks for the name and goal, then shows lead, priority, research phase, methods and an optional first milestone with a due date. Idea and Steady are editable defaults; only the name and goal are required. Full research title and publication details are available in an optional section of the same form. A milestone must have both a description and a date. Managers assign responsibilities to people who have joined the project; owners can update their own status. Responsibilities can be archived and restored. External collaborators are project contacts, not signups or reporting members. Team remains a shared directory of actual signups.
 
 Weekly reports still ask for accomplishments, next steps and help needed. Members can optionally tag several of their responsibilities in one report. The server records their names with the report so earlier reports remain understandable after responsibilities change. There are no hours or confidence-score requirements. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
 

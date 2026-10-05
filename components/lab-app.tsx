@@ -1081,6 +1081,16 @@ export function LabApp({
                   {chosen.priority && <>{chosen.priority} priority · </>}
                   {lastReport(chosen.id)}
                 </span>
+                {manager && (
+                  <button
+                    className="button secondary small-button"
+                    onClick={() =>
+                      setEditing({ project: chosen, action: "settings" })
+                    }
+                  >
+                    Project settings
+                  </button>
+                )}
               </div>
               <div
                 className="segmented project-view-switch"
@@ -1390,6 +1400,7 @@ export function LabApp({
       )}
       {editing && (
         <ProjectForm
+          people={data.people}
           project={editing.project}
           action={editing.action}
           close={() => setEditing(null)}

@@ -50,7 +50,7 @@ async function onboard(page: Page, name: string, project?: string) {
 
 test.describe.configure({ mode: "serial" });
 let pilotId = "";
-test("manager starts with an empty lab and creates a project using only name and goal", async ({
+test("manager starts with an empty lab and sets project essentials during creation", async ({
   page,
   context,
 }) => {
@@ -69,8 +69,20 @@ test("manager starts with an empty lab and creates a project using only name and
     .getByRole("button", { name: "Create project", exact: true })
     .click();
   const dialog = page.getByRole("dialog", { name: "Create project" });
-  await expect(dialog.getByRole("textbox")).toHaveCount(2);
-  await expect(dialog.getByRole("combobox")).toHaveCount(0);
+  await expect(
+    dialog.getByLabel("Project lead", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Current phase", { exact: true })).toHaveValue(
+    "Idea",
+  );
+  await expect(dialog.getByLabel("Priority", { exact: true })).toHaveValue(
+    "Steady",
+  );
+  await expect(
+    dialog.getByLabel("Research methods", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Milestone", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Due date", { exact: true })).toBeVisible();
   await dialog
     .getByLabel("Project name", { exact: true })
     .fill("Interview pilot");
@@ -78,13 +90,23 @@ test("manager starts with an empty lab and creates a project using only name and
     .getByLabel("Goal", { exact: true })
     .fill("Understand how founders collaborate.");
   await dialog
-    .getByRole("button", { name: "Save project", exact: true })
+    .getByLabel("Project lead", { exact: true })
+    .selectOption(initial.identity.personId);
+  await dialog.getByLabel("Priority", { exact: true }).selectOption("Push");
+  await dialog
+    .getByLabel("Research methods", { exact: true })
+    .fill("Interviews");
+  await dialog
+    .getByRole("button", { name: "Create project", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("table")).toContainText("Interview pilot");
   const after = await store(page);
   expect(after.projects).toHaveLength(1);
   expect(after.projects[0].phase).toBe("Idea");
+  expect(after.projects[0].leadId).toBe(initial.identity.personId);
+  expect(after.projects[0].priority).toBe("Push");
+  expect(after.projects[0].methods).toBe("Interviews");
   pilotId = after.projects[0].id;
   await page
     .getByRole("button", { name: "Share website", exact: true })
@@ -477,7 +499,7 @@ test("manager reviews real members, sets only phase and milestone, and completio
   await expect(page.locator(".update-card")).toHaveCount(2);
 });
 
-test("account keeps optional research details collapsed; manager sets the schedule and previews email", async ({
+test("account shows research profile fields; manager sets the schedule and previews email", async ({
   page,
 }) => {
   await sample(page, "admin");
@@ -487,7 +509,9 @@ test("account keeps optional research details collapsed; manager sets the schedu
     .click();
   await expect(
     page.locator(".profile-form").first().getByRole("textbox"),
-  ).toHaveCount(1);
+  ).toHaveCount(3);
+  await expect(page.getByLabel("Academic role", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Affiliation", { exact: true })).toBeVisible();
   await page.getByLabel("Reporting day", { exact: true }).selectOption("5");
   await page.getByLabel("Reporting time", { exact: true }).fill("18:00");
   await page
@@ -856,7 +880,6 @@ test("research detail stays optional while owners track responsibilities and sha
     fullPage: true,
   });
   await page.goto("/account");
-  await page.getByText("Research profile", { exact: false }).click();
   await page
     .getByLabel("Academic role", { exact: true })
     .fill("Research assistant");

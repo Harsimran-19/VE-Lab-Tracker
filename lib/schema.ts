@@ -43,14 +43,49 @@ export const collaboratorRecordSchema = z
 export const reportWorkstreamsSchema = z
   .array(z.object({ id: z.uuid(), name: text(150).min(1) }).strict())
   .max(50);
+const projectSetupFields = {
+  name: text(150).min(1, "Enter a project name."),
+  goal: text(1000).min(1, "Describe the project’s goal."),
+  phase: z.enum(STAGES),
+  leadId: text(100),
+  priority: z.union([z.literal(""), z.enum(PRIORITIES)]),
+  methods: text(2000),
+  milestone: text(500),
+  due: z.union([z.literal(""), z.iso.date()]),
+  fullTitle: text(500),
+  publicationStatus: z.union([z.literal(""), z.enum(PUBLICATION_STATUSES)]),
+  targetJournal: text(300),
+  altJournal: text(300),
+  targetConference: text(300),
+};
+const milestonePair = (v: { milestone?: string; due?: string }) =>
+  Boolean(v.milestone) === Boolean(v.due);
+const milestoneMessage = {
+  message: "Add both a milestone and its due date, or leave both empty.",
+  path: ["milestone"],
+};
 export const newProjectSchema = z
-  .object({
-    id: z.uuid(),
-    name: text(150).min(1, "Enter a project name."),
-    goal: text(1000).min(1, "Describe the project’s goal."),
+  .object({ id: z.uuid(), ...projectSetupFields })
+  .partial({
+    phase: true,
+    leadId: true,
+    priority: true,
+    methods: true,
+    milestone: true,
+    due: true,
+    fullTitle: true,
+    publicationStatus: true,
+    targetJournal: true,
+    altJournal: true,
+    targetConference: true,
   })
-  .strict();
+  .strict()
+  .refine(milestonePair, milestoneMessage);
 export const projectChangeSchema = z.discriminatedUnion("action", [
+  z
+    .object({ id, action: z.literal("settings"), ...projectSetupFields })
+    .strict()
+    .refine(milestonePair, milestoneMessage),
   z
     .object({
       id,

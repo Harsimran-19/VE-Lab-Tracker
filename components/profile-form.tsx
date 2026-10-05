@@ -40,7 +40,8 @@ export function ProfileForm({
     <form className="panel profile-form" onSubmit={submit}>
       <h2>Your account</h2>
       <p className="section-copy">
-        Your name is shown beside your project updates.
+        Introduce yourself to the lab. Your name, academic role and affiliation
+        appear in the team directory.
       </p>
       <fieldset className="entry-fields" disabled={busy}>
         <label>
@@ -52,31 +53,28 @@ export function ProfileForm({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <details className="form-disclosure">
-          <summary>
-            Research profile <span className="optional-label">Optional</span>
-          </summary>
-          <div className="entry-fields">
-            <label>
-              Academic role
-              <input
-                maxLength={150}
-                placeholder="e.g. PhD student or research assistant"
-                value={academicRole}
-                onChange={(e) => setAcademicRole(e.target.value)}
-              />
-            </label>
-            <label>
-              Affiliation
-              <input
-                maxLength={300}
-                placeholder="University, school or research group"
-                value={affiliation}
-                onChange={(e) => setAffiliation(e.target.value)}
-              />
-            </label>
-          </div>
-        </details>
+        <div className="form-grid">
+          <label>
+            Academic role <span className="optional-label">Optional</span>
+            <input
+              aria-label="Academic role"
+              maxLength={150}
+              placeholder="e.g. PhD student or research assistant"
+              value={academicRole}
+              onChange={(e) => setAcademicRole(e.target.value)}
+            />
+          </label>
+          <label>
+            Affiliation <span className="optional-label">Optional</span>
+            <input
+              aria-label="Affiliation"
+              maxLength={300}
+              placeholder="University, school or research group"
+              value={affiliation}
+              onChange={(e) => setAffiliation(e.target.value)}
+            />
+          </label>
+        </div>
         <label className="check-label">
           <input
             type="checkbox"
