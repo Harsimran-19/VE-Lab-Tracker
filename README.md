@@ -1,6 +1,19 @@
 # VE Lab Tracker
 
-A Next.js application for a research lab, deployed on Vercel. Google login creates member accounts automatically; Google Sheets is the only persistent data store.
+A research workspace for Venture Engineering Lab’s projects, students, RAs, postdocs and PhDs. It runs on Vercel, uses Google sign-in and stores all persistent application data in Google Sheets.
+
+## Product flow
+
+Google sign-in → My dashboard → Projects → Join a project → Share weekly progress.
+
+- **Dashboard:** members’ work, updates to share and deadlines. Administrators see lab progress, reporting gaps and blockers.
+- **Projects:** searchable research directory and self-service membership. Administrators create projects and set phases, milestones and due dates.
+- **Project workspace:** research phase, milestone, team responsibilities, external collaborators and everyone’s weekly updates. Updates record progress, status, blockers and next week’s plan with automatic author/date. Searchable history supports performance reviews.
+- **People:** find collaborators through expertise, position, interests and project involvement.
+- **My profile:** name, affiliation, position, expertise, research interests and deadline email preference; accessible from the account menu.
+- **Deadline emails:** daily Vercel scheduler, Resend delivery and Google Sheets delivery ledger. One upcoming, due-date and overdue reminder per deadline. Completed responsibilities and opted-out members are excluded.
+
+Accounts are created automatically with Member access. No routine admin registration or assignment is needed. Existing matching emails retain their workbook identity; blank-email records are never claimed by display name. Admins can optionally connect imported people’s Google emails before their first login. `harsimran1869@gmail.com` is the designated test administrator. Administrator corrections and read-only member previews live in People.
 
 ## Start locally
 
@@ -10,60 +23,35 @@ cp .env.example .env.local
 npm run dev
 ```
 
-For a credential-free local sample workspace, set `DEMO_MODE=true` in `.env.local`. Sample reports are clearly labeled and live only in the development server's memory. Use **Member view** to try an existing member, **New member view** to test self-registration with no assigned work, and **Admin view** to review the sample lab. This mode is disabled whenever `NODE_ENV` is not `development` or `VERCEL` is set, even if `DEMO_MODE=true`.
+For credential-free development, set `DEMO_MODE=true`. Use Member view, New member view and Admin view to test the flow. Sample reports are labeled; in-memory data resets on server restart. Email sending is disabled. Demo authentication is unavailable in production or whenever `VERCEL` is set.
 
-For the real app, follow [Google and Vercel setup](docs/GOOGLE_SETUP.md). Google credentials belong in `.env.local` or Vercel environment variables, never in tracked files. No database, Apps Script deployment, or Google Form is required.
+For real Google and email connections, use the exact copy/paste steps in [the setup guide](docs/GOOGLE_SETUP.md). Credentials belong in ignored `.env.local` or private environment settings. Cloud and Vercel variables are separate; configuring one does not configure the other. [fictional.env](docs/fictional.env) demonstrates formatting with invalid example values.
 
-## Included
+## Google Sheets
 
-- Google sign-in with verified emails and automatic member registration in Sheets.
-- Admin testing account: `harsimran1869@gmail.com`.
-- Fifteen projects and twenty-one responsibilities transcribed from the supplied workbook.
-- One admin overview showing people, projects, entries, progress, and blockers; person/status/search filters.
-- Responsibility assignment and editing, including multiple responsibilities within a shared project.
-- Member progress reports, blockers, next plans, previous-plan context, and automatic author/timestamp recording.
-- Members choose existing projects or create their own and submit entries without admin assignments.
-- Optional admin corrections to Google emails, roles, project details, and legacy responsibilities.
-- Admin-only, read-only member previews that work in production without changing the signed-in account.
-- A member home page with one Add entry action and their own saved entries.
-- One-click initialization of a **new blank Sheet**, preserving the source workbook.
-- Responsive screens, keyboard-accessible dialogs, empty states, and connection errors.
+A new blank Sheet is initialized once with 15 projects and 21 responsibilities from the supplied workbook. Real weekly updates start empty. Required tabs: `Projects`, `People`, `Assignments`, `Collaborators`, `Updates`. Optional `Profiles` and `Reminders` tabs are added on first use; existing normalized app Sheets remain compatible. Do not reinitialize an existing app Sheet or overwrite the source workbook.
 
-## Self-service workflow
+Server-side reads and writes use the service account; user login requests only `openid`, `email`, `profile`. Text uses Sheets `RAW` input so it cannot become a formula. All signed-in lab members can read the shared research directory, profiles and team updates. They can write only their own profile, membership and progress. Only administrators can manage projects, accounts and responsibilities. Email delivery records stay server-side; the admin receives counts only.
 
-1. The administrator initializes the new Sheet once and shares the website using **Copy invite link**.
-2. Anyone who can access the external Google login signs in with their verified Google account. A member row is created automatically; they cannot choose an administrator role.
-3. The member chooses **Add entry**, selects an existing project or creates a new one, describes their progress, and saves. The app records their name, date, and project membership automatically. No admin-created account or assignment is required.
-4. The administrator sees everyone and all entries on **Lab overview**, with filters for people, progress, and blockers. Members see their own saved entries. Existing project names are available to all signed-in members so they can choose where to contribute.
+Google Sheets has quotas and no transactions. The app is intended for the small lab: simultaneous edits to the same record can overwrite each other. Stable membership and signup IDs converge after concurrent appends; report retries reuse submission IDs. Reminder records are reserved before sending, with Resend idempotency protecting immediate retries. Older unconfirmed delivery records are held for review; see the setup guide.
 
-**Google audience:** after initial testing, go to **Google Auth Platform → Audience → Publish app** and confirm the publishing status is **In production**. If Google restricts an account while the audience is in Testing, add it under Test users for initial testing. This is a one-time Google configuration, not an ongoing app approval step. Login uses only `openid`, `email`, and `profile`; the service account performs Sheet access separately.
+Weeks start Monday in `LAB_TIMEZONE` (default `Asia/Kolkata`), independent of the server’s timezone. Reporting gaps indicate missing updates this week, not grades or automatic performance scores. Research stage is independent of weekly progress status.
 
-Existing workbook rows and responsibilities remain intact. An existing matching Google email retains its original identity and role. Blank-email workbook records are never claimed automatically by display name. An admin can optionally edit that imported person’s email to link their existing workbook history before they first sign in.
-
-Admins can make occasional corrections with a person’s edit button or a project’s details. The eye button previews a member’s experience without changing the administrator session; previews remain read-only. `ADMIN_EMAILS` defines the workspace owner. Self-signup always grants Member access, and the owner and active administrator cannot be demoted through the app.
-
-## Storage
-
-The app uses five normalized Sheet tabs: `Projects`, `People`, `Assignments`, `Collaborators`, `Updates`. Initialize them through the app; the original six-tab workbook uses a different schema and cannot be connected directly. Do not rename the tabs, alter headers, sort rows during writes, or insert formulas into the stored records. Use the app for routine edits.
-
-All reads and writes happen on the server. Text is written with Sheets `valueInputOption=RAW`, preventing user input from becoming spreadsheet formulas. Session cookies do not contain service-account credentials. Signed-in members receive their assigned projects and their own reports; administrators see the full workspace. The people overview and other members’ contact details are available only to administrators.
-
-Google Sheets works well for this lab's small reporting volume. It has API quotas and does not offer database transactions or conflict detection: simultaneous admin edits to the same record can overwrite each other. Updates use append operations and UUID identifiers. The application expects one administrative initialization at a time and avoids overwriting populated tracker tabs.
-
-## Checks
+## Verify
 
 ```bash
-npm run typecheck
 npm test
+npm run typecheck
 npm run build
-npx playwright install chromium
 npm run test:e2e
 ```
 
-Browser tests start an isolated local sample server on port 3100; a second production server checks that sample authentication is disabled. Production tests require a completed build. The real Google OAuth consent flow and Sheet permissions must be verified with the user's credentials after deployment.
+Browser checks run sample mode on port 3100 and production on 3101. Stop any development server from this checkout first; Next.js permits one dev process per checkout. Chromium uses `/usr/bin/chromium` where available; otherwise run `npx playwright install chromium`. The production build is required before browser tests.
 
-## Deployment
+Tests cover actual UI journeys, shared visibility, write authorization, identity spoofing, Sheet contracts/migration, timezone boundaries, email preferences and retry handling. Google and email services are mocked in unit tests. Actual OAuth consent, Sheet permissions, verified sender delivery and scheduled Vercel execution require deployment credentials.
 
-Import this repository into Vercel, choose Next.js, and configure the variables in `.env.example`. Set `NEXTAUTH_URL` to your stable deployment URL and add the matching Google callback URI. Use your stable deployment or a separately configured Google OAuth client for previews; arbitrary Vercel preview URLs are not automatically permitted by Google. Redeploy after changing variables. Detailed steps are in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
+## Deploy
 
-Automated reminders and reporting schedules are not included. Accounts and projects are created through the app and stored in the existing five Sheet tabs; no schema migration is needed. Entry retries reuse their submission ID to recover partial writes without duplicating an already saved entry.
+Import this repository into Vercel as Next.js. Add the private variables from `.env.example`, set `DEMO_MODE=false`, configure Google’s matching callback URI, and redeploy. Email requires `RESEND_API_KEY`, a verified `EMAIL_FROM`, and a separate strong `CRON_SECRET`. `vercel.json` registers one daily reminder run at 04:00 UTC, compatible with Vercel’s daily Hobby scheduling. Arbitrary preview deployment URLs do not automatically work with Google OAuth.
+
+The user handles deployment. Full instructions, including fictional values and exactly where each value goes, are in [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md).
