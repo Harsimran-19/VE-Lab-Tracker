@@ -28,10 +28,13 @@ import { ProfileForm, SettingsForm } from "./profile-form";
 import { Welcome } from "./welcome";
 import { HelpTip } from "./help-tip";
 import { TeamDirectory, MemberContact, memberProjects } from "./team-directory";
+import { ProjectContext } from "./project-details";
 import type { Screen } from "./workspace-page";
 function Avatar({ name }: { name: string }) {
   return (
-    <span className="avatar" aria-hidden="true">{initials(name)}</span>
+    <span className="avatar" aria-hidden="true">
+      {initials(name)}
+    </span>
   );
 }
 export function LabApp({
@@ -50,9 +53,16 @@ export function LabApp({
     [onlyMine, setOnlyMine] = useState(false),
     [completed, setCompleted] = useState(
       initial.projects.length > 0 &&
-        !initial.projects.some((p) => p.state === "active"),
+        !initial.projects.some((p) => p.state === "active") &&
+        initial.projects.some((p) => p.state === "completed"),
     ),
     [history, setHistory] = useState(false),
+    [detailView, setDetailView] = useState(false),
+    [onHold, setOnHold] = useState(
+      !initial.projects.some(
+        (p) => p.state === "active" || p.state === "completed",
+      ) && initial.projects.some((p) => p.state === "on-hold"),
+    ),
     [limit, setLimit] = useState(12),
     [entry, setEntry] = useState<string | null>(null),
     [editing, setEditing] = useState<{
@@ -86,22 +96,43 @@ export function LabApp({
       current.some((u) => u.projectId === projectId && u.personId === personId),
     gaps = expected.filter((m) => !reported(m.projectId, m.personId));
   const latest = latestReports(data.updates),
+    blockedWork = active.flatMap((p) =>
+      (p.workstreams ?? [])
+        .filter((w) => !w.archived && w.status === "Blocked")
+        .map((w) => ({ ...w, projectId: p.id, projectName: p.name })),
+    ),
     help = latest.filter(
       (u) => u.needsHelp === "true" && active.some((p) => p.id === u.projectId),
     ),
     deadlines = active
-      .filter(
-        (p) =>
-          p.due &&
-          (manager || ownIds.has(p.id)) &&
-          dayDifference(p.due, data.today) <= 7,
-      )
+      .flatMap((p) => [
+        ...(p.due && (manager || ownIds.has(p.id))
+          ? [{ ...p, deadlineKey: p.id }]
+          : []),
+        ...(p.workstreams ?? [])
+          .filter(
+            (w) =>
+              !w.archived &&
+              w.status !== "Done" &&
+              w.due &&
+              (manager || w.ownerId === data.identity.personId),
+          )
+          .map((w) => ({
+            ...p,
+            milestone: w.name,
+            due: w.due,
+            deadlineKey: w.id,
+          })),
+      ])
+      .filter((p) => dayDifference(p.due, data.today) <= 7)
       .sort((a, b) => a.due.localeCompare(b.due));
   const filtered = data.projects.filter(
     (p) =>
-      p.state === (completed ? "completed" : "active") &&
+      p.state === (onHold ? "on-hold" : completed ? "completed" : "active") &&
       (!onlyMine || ownIds.has(p.id)) &&
-      `${p.name} ${p.goal}`.toLowerCase().includes(search.toLowerCase()),
+      `${p.name} ${p.fullTitle ?? ""} ${p.goal}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
   const projectLatest = latest.filter((u) => u.projectId === projectId),
     previous = data.updates
@@ -151,7 +182,10 @@ export function LabApp({
         <div className="update-card-head">
           <Avatar name={name} />
           <div>
-            <Link href={`/team/${encodeURIComponent(u.personId)}`} prefetch={false}>
+            <Link
+              href={`/team/${encodeURIComponent(u.personId)}`}
+              prefetch={false}
+            >
               <strong>{name}</strong>
             </Link>
             <p>
@@ -166,6 +200,11 @@ export function LabApp({
           </span>
         </div>
         <span className="field-label">Progress</span>
+        {!!u.workstreams?.length && (
+          <p className="report-workstreams">
+            {u.workstreams.map((w) => w.name).join(" · ")}
+          </p>
+        )}
         <p className="update-progress">{u.progress}</p>
         <p className="next-plan">
           <strong>Next step:</strong> {u.nextPlan}
@@ -188,14 +227,12 @@ export function LabApp({
         </div>
         {deadlines.length ? (
           <>
-            <p className="section-copy">
-              Next seven days and overdue milestones.
-            </p>
+            <p className="section-copy">Next seven days and overdue work.</p>
             {deadlines.slice(0, 5).map((p) => (
               <Link
                 className="deadline-row"
                 href={`/projects/${p.id}`}
-                key={p.id}
+                key={p.deadlineKey}
               >
                 <span
                   className={`deadline-date ${dayDifference(p.due, data.today) < 0 ? "late" : ""}`}
@@ -220,6 +257,7 @@ export function LabApp({
   }
   function projectCard(p: Project) {
     const count = data.memberships.filter((m) => m.projectId === p.id).length;
+    const last = lastReport(p.id);
     return (
       <Link
         prefetch={false}
@@ -242,13 +280,37 @@ export function LabApp({
               ? ` · Milestone due ${shortDate(p.due)}`
               : ""}
           </small>
+          <small className="project-recency">
+            {p.priority ? `${p.priority} priority · ` : ""}
+            {last}
+          </small>
         </div>
         <span className="stage-pill">
-          {p.state === "completed" ? "Completed" : p.phase}
+          {p.state === "completed"
+            ? "Completed"
+            : p.state === "on-hold"
+              ? "On hold"
+              : p.phase}
         </span>
         <ChevronRight size={18} />
       </Link>
     );
+  }
+  function lastReport(id: string) {
+    const report = data.updates
+      .filter((u) => u.projectId === id)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    if (!report) return "No reports yet";
+    const date = localDateTime(
+      new Date(report.updatedAt),
+      data.settings.timezone,
+    ).slice(0, 10);
+    const days = Math.max(0, dayDifference(data.today, date));
+    return days === 0
+      ? "Last report today"
+      : days === 1
+        ? "Last report yesterday"
+        : `Last report ${days} days ago`;
   }
   if (data.needsOnboarding) return <Welcome data={data} saved={refresh} />;
   const heading =
@@ -380,7 +442,8 @@ export function LabApp({
           )}
           {screen === "member" && (
             <Link className="breadcrumb" href="/team">
-              Team <ChevronRight size={14} />{person?.name}
+              Team <ChevronRight size={14} />
+              {person?.name}
             </Link>
           )}
           <div className="page-heading">
@@ -453,7 +516,13 @@ export function LabApp({
                     </button>
                   )
                 ) : (
-                  <span className="report-status done">Completed project</span>
+                  <span
+                    className={`report-status ${chosen.state === "completed" ? "done" : ""}`}
+                  >
+                    {chosen.state === "on-hold"
+                      ? "Project on hold"
+                      : "Completed project"}
+                  </span>
                 ))}
             </div>
           </div>
@@ -482,7 +551,7 @@ export function LabApp({
                     </h2>
                     <p>
                       {data.projects.length
-                        ? "Completed projects and their reports are available in Projects. Create a project when new work begins."
+                        ? "Completed and paused projects are available in Projects. Create a project when new work begins."
                         : "Give it a name and a clear goal. Then share this website so your team can join and report progress."}
                     </p>
                     {data.projects.length > 0 && (
@@ -509,7 +578,12 @@ export function LabApp({
                       <div>
                         <span>Members needing help</span>
                         <strong>
-                          {new Set(help.map((u) => u.personId)).size}
+                          {
+                            new Set([
+                              ...help.map((u) => u.personId),
+                              ...blockedWork.map((w) => w.ownerId),
+                            ]).size
+                          }
                         </strong>
                       </div>
                     </div>
@@ -556,7 +630,11 @@ export function LabApp({
                                         <Link href={`/projects/${p.id}`}>
                                           {p.name}
                                         </Link>
-                                        <small>{p.phase}</small>
+                                        <small>
+                                          {p.phase}
+                                          {p.priority ? ` · ${p.priority}` : ""}
+                                        </small>
+                                        <small>{lastReport(p.id)}</small>
                                       </td>
                                       <td data-label="This week">
                                         <strong>
@@ -598,12 +676,12 @@ export function LabApp({
                             </table>
                           </div>
                         </section>
-                        {help.length > 0 && (
+                        {(help.length > 0 || blockedWork.length > 0) && (
                           <section className="panel dashboard-panel">
                             <h2>Requests for help</h2>
                             <p className="section-copy">
-                              Requests stay visible until the member saves an
-                              update without “I need help”.
+                              Open a project to review help requests and blocked
+                              responsibilities.
                             </p>
                             {help.map((u) => (
                               <Link
@@ -627,6 +705,24 @@ export function LabApp({
                                     }
                                   </strong>
                                   <p>{u.blockers}</p>
+                                </div>
+                                <ChevronRight size={16} />
+                              </Link>
+                            ))}
+                            {blockedWork.map((w) => (
+                              <Link
+                                className="attention-row"
+                                href={`/projects/${w.projectId}`}
+                                key={w.id}
+                              >
+                                <span className="attention-dot" />
+                                <div>
+                                  <strong>
+                                    {data.people.find((p) => p.id === w.ownerId)
+                                      ?.name ?? "Member"}{" "}
+                                    · {w.projectName}
+                                  </strong>
+                                  <p>{w.name} is blocked.</p>
                                 </div>
                                 <ChevronRight size={16} />
                               </Link>
@@ -659,7 +755,11 @@ export function LabApp({
                             (p) => ownIds.has(p.id) && p.state === "completed",
                           )
                         ? "Your projects are complete"
-                        : "No projects yet"}
+                        : data.projects.some(
+                              (p) => ownIds.has(p.id) && p.state === "on-hold",
+                            )
+                          ? "Your projects are on hold"
+                          : "No projects yet"}
                   </h2>
                   <p>
                     {active.length
@@ -668,7 +768,11 @@ export function LabApp({
                             (p) => ownIds.has(p.id) && p.state === "completed",
                           )
                         ? "Your earlier reports are available in Projects. New active work will appear here when you join it."
-                        : "Your manager will create the lab’s projects. They will appear here when ready."}
+                        : data.projects.some(
+                              (p) => ownIds.has(p.id) && p.state === "on-hold",
+                            )
+                          ? "Weekly reporting is paused. Your projects and earlier reports are available in Projects."
+                          : "Your manager will create the lab’s projects. They will appear here when ready."}
                   </p>
                   {active.length > 0 && (
                     <Link className="button primary" href="/projects">
@@ -711,6 +815,24 @@ export function LabApp({
                                       : "Ready for your update"
                                     : "First update expected next week"}
                               </span>
+                              {(p.workstreams ?? [])
+                                .filter(
+                                  (w) =>
+                                    !w.archived &&
+                                    w.ownerId === data.identity.personId,
+                                )
+                                .map((w) => (
+                                  <Link
+                                    className={`my-responsibility ${w.status === "Blocked" ? "late-label" : ""}`}
+                                    key={w.id}
+                                    href={`/projects/${p.id}`}
+                                  >
+                                    {w.name} · {w.status}
+                                    {w.due && w.status !== "Done"
+                                      ? ` · Due ${shortDate(w.due)}`
+                                      : ""}
+                                  </Link>
+                                ))}
                             </div>
                             {saved && (
                               <CheckCircle2 className="green-icon" size={18} />
@@ -804,9 +926,25 @@ export function LabApp({
                       <input
                         type="checkbox"
                         checked={completed}
-                        onChange={(e) => setCompleted(e.target.checked)}
+                        onChange={(e) => {
+                          setCompleted(e.target.checked);
+                          setOnHold(false);
+                        }}
                       />
                       Show completed projects
+                    </label>
+                  )}
+                  {data.projects.some((p) => p.state === "on-hold") && (
+                    <label className="check-label">
+                      <input
+                        type="checkbox"
+                        checked={onHold}
+                        onChange={(e) => {
+                          setOnHold(e.target.checked);
+                          setCompleted(false);
+                        }}
+                      />
+                      Show projects on hold
                     </label>
                   )}
                   {data.projects.length > 5 && (
@@ -928,137 +1066,211 @@ export function LabApp({
                   own weekly updates.
                 </p>
               )}
-              <div className="dashboard-columns project-columns">
-                <section>
-                  <div className="section-heading">
-                    <div>
-                      <h2>
-                        {history ? "Earlier reports" : "Latest team progress"}
-                      </h2>
-                      <p className="section-copy">
-                        {history
-                          ? "Earlier weekly reports created in this app."
-                          : "The latest report from each member. Each report shows its week."}
-                      </p>
+              <div className="project-meta">
+                <span>
+                  {chosen.leadId && (
+                    <>
+                      Led by{" "}
+                      <Link href={`/team/${encodeURIComponent(chosen.leadId)}`}>
+                        {data.people.find((p) => p.id === chosen.leadId)
+                          ?.name ?? "Lab member"}
+                      </Link>{" "}
+                      ·{" "}
+                    </>
+                  )}
+                  {chosen.priority && <>{chosen.priority} priority · </>}
+                  {lastReport(chosen.id)}
+                </span>
+              </div>
+              <div
+                className="segmented project-view-switch"
+                aria-label="Project view"
+              >
+                <button
+                  aria-pressed={!detailView}
+                  className={!detailView ? "selected" : ""}
+                  onClick={() => setDetailView(false)}
+                >
+                  Progress
+                </button>
+                <button
+                  aria-pressed={detailView}
+                  className={detailView ? "selected" : ""}
+                  onClick={() => setDetailView(true)}
+                >
+                  Project details
+                </button>
+              </div>
+              {detailView ? (
+                <ProjectContext
+                  project={chosen}
+                  data={data}
+                  saved={refresh}
+                  mode="details"
+                />
+              ) : (
+                <div className="dashboard-columns project-columns">
+                  <section>
+                    <ProjectContext
+                      project={chosen}
+                      data={data}
+                      saved={refresh}
+                      mode="responsibilities"
+                    />
+                    <div className="section-heading">
+                      <div>
+                        <h2>
+                          {history ? "Earlier reports" : "Latest team progress"}
+                        </h2>
+                        <p className="section-copy">
+                          {history
+                            ? "Earlier weekly reports created in this app."
+                            : "The latest report from each member. Each report shows its week."}
+                        </p>
+                      </div>
+                      {previous.length > 0 && (
+                        <button
+                          className="button secondary"
+                          onClick={() => {
+                            setHistory(!history);
+                            setLimit(12);
+                          }}
+                        >
+                          {history ? "Latest progress" : "Earlier weeks"}
+                        </button>
+                      )}
                     </div>
-                    {previous.length > 0 && (
+                    <div className="update-feed">
+                      {(history ? previous : projectLatest)
+                        .slice(0, limit)
+                        .map(reportCard)}
+                      {!projectLatest.length && (
+                        <section className="panel empty-state">
+                          <h3>No progress shared yet</h3>
+                          <p>
+                            {chosen.state === "completed"
+                              ? "No reports were submitted for this project."
+                              : chosen.state === "on-hold"
+                                ? "Weekly reporting is paused until this project resumes."
+                                : ownIds.has(chosen.id)
+                                  ? "Write your first weekly update using the button above."
+                                  : "Reports will appear as members join and share their work."}
+                          </p>
+                        </section>
+                      )}
+                    </div>
+                    {(history ? previous : projectLatest).length > limit && (
                       <button
-                        className="button secondary"
-                        onClick={() => {
-                          setHistory(!history);
-                          setLimit(12);
-                        }}
+                        className="button secondary load-more"
+                        onClick={() => setLimit(limit + 12)}
                       >
-                        {history ? "Latest progress" : "Earlier weeks"}
+                        Load more reports
                       </button>
                     )}
-                  </div>
-                  <div className="update-feed">
-                    {(history ? previous : projectLatest)
-                      .slice(0, limit)
-                      .map(reportCard)}
-                    {!projectLatest.length && (
-                      <section className="panel empty-state">
-                        <h3>No progress shared yet</h3>
-                        <p>
-                          {chosen.state === "completed"
-                            ? "No reports were submitted for this project."
-                            : ownIds.has(chosen.id)
-                              ? "Write your first weekly update using the button above."
-                              : "Reports will appear as members join and share their work."}
-                        </p>
-                      </section>
-                    )}
-                  </div>
-                  {(history ? previous : projectLatest).length > limit && (
-                    <button
-                      className="button secondary load-more"
-                      onClick={() => setLimit(limit + 12)}
-                    >
-                      Load more reports
-                    </button>
-                  )}
-                </section>
-                <aside>
-                  <section className="panel dashboard-panel">
-                    <h2>Project members</h2>
-                    <div className="project-members">
-                      {data.memberships
-                        .filter((m) => m.projectId === chosen.id)
-                        .map((m) => {
-                          const name =
-                            data.people.find((p) => p.id === m.personId)
-                              ?.name ?? "Member";
-                          return (
-                            <Link
-                              key={m.id}
-                              href={`/team/${encodeURIComponent(m.personId)}`}
-                              prefetch={false}
-                            >
-                              <Avatar name={name} />
-                              <span>
-                                {name}
-                                {m.personId === data.identity.personId && (
-                                  <small>You</small>
-                                )}
-                              </span>
-                            </Link>
-                          );
-                        })}
-                    </div>
-                    {!data.memberships.some(
-                      (m) => m.projectId === chosen.id,
-                    ) && (
-                      <p className="quiet-empty">No members have joined yet.</p>
-                    )}
                   </section>
-                  {manager && (
+                  <aside>
                     <section className="panel dashboard-panel">
-                      <h2>Manage project</h2>
-                      <div className="management-actions">
-                        <button
-                          className="button secondary"
-                          onClick={() =>
-                            setEditing({ project: chosen, action: "goal" })
-                          }
-                        >
-                          Edit name and goal
-                        </button>
-                        <button
-                          className="button secondary"
-                          onClick={() =>
-                            setEditing({
-                              project: chosen,
-                              action:
-                                chosen.state === "active"
-                                  ? "complete"
-                                  : "reopen",
-                            })
-                          }
-                        >
-                          {chosen.state === "active"
-                            ? "Complete project"
-                            : "Reopen project"}
-                        </button>
+                      <h2>Project members</h2>
+                      <div className="project-members">
+                        {data.memberships
+                          .filter((m) => m.projectId === chosen.id)
+                          .map((m) => {
+                            const name =
+                              data.people.find((p) => p.id === m.personId)
+                                ?.name ?? "Member";
+                            return (
+                              <Link
+                                key={m.id}
+                                href={`/team/${encodeURIComponent(m.personId)}`}
+                                prefetch={false}
+                              >
+                                <Avatar name={name} />
+                                <span>
+                                  {name}
+                                  {m.personId === data.identity.personId && (
+                                    <small>You</small>
+                                  )}
+                                </span>
+                              </Link>
+                            );
+                          })}
                       </div>
+                      {!data.memberships.some(
+                        (m) => m.projectId === chosen.id,
+                      ) && (
+                        <p className="quiet-empty">
+                          No members have joined yet.
+                        </p>
+                      )}
                     </section>
-                  )}
-                </aside>
-              </div>
+                    {manager && (
+                      <details className="panel dashboard-panel management-disclosure">
+                        <summary>
+                          <h2>Manage project</h2>
+                        </summary>
+                        <div className="management-actions">
+                          <button
+                            className="button secondary"
+                            onClick={() =>
+                              setEditing({ project: chosen, action: "goal" })
+                            }
+                          >
+                            Edit name and goal
+                          </button>
+                          {chosen.state === "active" && (
+                            <button
+                              className="button secondary"
+                              onClick={() =>
+                                setEditing({ project: chosen, action: "pause" })
+                              }
+                            >
+                              Put on hold
+                            </button>
+                          )}
+                          <button
+                            className="button secondary"
+                            onClick={() =>
+                              setEditing({
+                                project: chosen,
+                                action:
+                                  chosen.state === "active"
+                                    ? "complete"
+                                    : "reopen",
+                              })
+                            }
+                          >
+                            {chosen.state === "active"
+                              ? "Complete project"
+                              : "Reopen project"}
+                          </button>
+                        </div>
+                      </details>
+                    )}
+                  </aside>
+                </div>
+              )}
             </>
           )}
           {screen === "team" && <TeamDirectory data={data} />}
           {screen === "member" && person && (
             <div className="member-layout">
-              <MemberContact person={person} own={person.id === data.identity.personId} />
+              <MemberContact
+                person={person}
+                own={person.id === data.identity.personId}
+              />
               <section aria-label="Member projects">
                 <h2 className="member-project-heading">Projects</h2>
                 {memberProjects(data, person.id).length ? (
-                  <div className="projects-list">{memberProjects(data, person.id).map(projectCard)}</div>
+                  <div className="projects-list">
+                    {memberProjects(data, person.id).map(projectCard)}
+                  </div>
                 ) : (
                   <div className="panel empty-state">
                     <h3>No projects joined</h3>
-                    <p>{person.name} is part of the team and hasn’t joined a project yet.</p>
+                    <p>
+                      {person.name} is part of the team and hasn’t joined a
+                      project yet.
+                    </p>
                   </div>
                 )}
               </section>

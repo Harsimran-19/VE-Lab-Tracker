@@ -2,6 +2,13 @@ import "server-only";
 import { JWT } from "google-auth-library";
 import { AppError } from "./access";
 import { emptyStore } from "./types";
+import { z } from "zod";
+import {
+  collaboratorRecordSchema,
+  resourceLinkSchema,
+  workstreamRecordSchema,
+  reportWorkstreamsSchema,
+} from "./schema";
 import type {
   Store,
   Project,
@@ -13,8 +20,36 @@ import type {
 } from "./types";
 // Fresh schema: legacy tracker tabs are never read, imported, or overwritten.
 export const TABLES = {
-  LabProjects: ["id", "name", "goal", "phase", "milestone", "due", "state"],
-  LabMembers: ["id", "name", "email", "setupComplete", "reminders"],
+  LabProjects: [
+    "id",
+    "name",
+    "goal",
+    "phase",
+    "milestone",
+    "due",
+    "state",
+    "fullTitle",
+    "leadId",
+    "priority",
+    "methods",
+    "publicationStatus",
+    "targetJournal",
+    "altJournal",
+    "targetConference",
+    "notes",
+    "links",
+    "workstreams",
+    "collaborators",
+  ],
+  LabMembers: [
+    "id",
+    "name",
+    "email",
+    "setupComplete",
+    "reminders",
+    "academicRole",
+    "affiliation",
+  ],
   LabMemberships: ["id", "projectId", "personId", "joinedAt"],
   LabReports: [
     "id",
@@ -27,6 +62,7 @@ export const TABLES = {
     "nextPlan",
     "needsHelp",
     "blockers",
+    "workstreams",
   ],
   LabSettings: ["id", "reportingDay", "reportingTime", "timezone"],
   LabDeliveries: [
@@ -42,6 +78,33 @@ export const TABLES = {
 } as const;
 export type Table = keyof typeof TABLES;
 type Entity = Project | Person | Membership | Update | Settings | Reminder;
+const legacyLengths: Partial<Record<Table, number>> = {
+  LabProjects: 7,
+  LabMembers: 5,
+  LabReports: 10,
+};
+function legacyHeaders(table: Table, row: string[]) {
+  const length = legacyLengths[table];
+  return (
+    length !== undefined &&
+    row.length === length &&
+    row.every((h, i) => TABLES[table][i] === h)
+  );
+}
+function decodeList<T>(
+  value: string | undefined,
+  schema: z.ZodType<T>,
+  field: string,
+): T {
+  try {
+    return schema.parse(value ? JSON.parse(value) : []);
+  } catch {
+    throw new AppError(
+      `Invalid ${field} data in the lab spreadsheet. Restore this field before continuing.`,
+      409,
+    );
+  }
+}
 let auth: JWT | undefined;
 async function request(path: string, init?: RequestInit) {
   const sheet = process.env.GOOGLE_SHEET_ID;
@@ -131,6 +194,10 @@ export async function readSheet(): Promise<Store> {
   const rows = data.valueRanges.map(
     (r: { values?: string[][] }) => r.values ?? [],
   );
+  if (tables.some((table, i) => legacyHeaders(table, rows[i]?.[0] ?? []))) {
+    await ensureTables(true);
+    return readSheet();
+  }
   if (
     rows.some((r: string[][]) => !r.some((row) => row.some((v) => v !== "")))
   ) {
@@ -145,10 +212,36 @@ export async function readSheet(): Promise<Store> {
       409,
     );
   return {
-    projects: toObjects<Project>(rows[0], TABLES.LabProjects),
+    projects: toObjects<Project>(rows[0], TABLES.LabProjects).map(
+      (project) => ({
+        ...project,
+        links: decodeList(
+          project.links as unknown as string,
+          z.array(resourceLinkSchema).max(10),
+          "project links",
+        ),
+        workstreams: decodeList(
+          project.workstreams as unknown as string,
+          z.array(workstreamRecordSchema).max(100),
+          "responsibilities",
+        ),
+        collaborators: decodeList(
+          project.collaborators as unknown as string,
+          z.array(collaboratorRecordSchema).max(50),
+          "collaborators",
+        ),
+      }),
+    ),
     people,
     memberships: toObjects<Membership>(rows[2], TABLES.LabMemberships),
-    updates: toObjects<Update>(rows[3], TABLES.LabReports),
+    updates: toObjects<Update>(rows[3], TABLES.LabReports).map((update) => ({
+      ...update,
+      workstreams: decodeList(
+        update.workstreams as unknown as string,
+        reportWorkstreamsSchema,
+        "report responsibilities",
+      ),
+    })),
     settings:
       toObjects<Settings>(rows[4], TABLES.LabSettings).find(
         (s) => s.id === "lab",
@@ -194,6 +287,19 @@ export async function ensureTables(checkHeaders = false) {
       `/values/${encodeURIComponent(`'${table}'!A:Z`)}`,
     );
     if (data.values?.some((r: string[]) => r.some((v) => v !== ""))) {
+      if (legacyHeaders(table, data.values[0] ?? [])) {
+        const start = String.fromCharCode(65 + data.values[0].length);
+        await request(
+          `/values/${encodeURIComponent(`'${table}'!${start}1`)}?valueInputOption=RAW`,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              values: [TABLES[table].slice(data.values[0].length)],
+            }),
+          },
+        );
+        continue;
+      }
       toObjects(data.values, TABLES[table]);
       continue;
     }
@@ -204,9 +310,10 @@ export async function ensureTables(checkHeaders = false) {
   }
 }
 function cells(table: Table, entity: Entity) {
-  return TABLES[table].map((h) =>
-    String((entity as unknown as Record<string, string>)[h] ?? ""),
-  );
+  return TABLES[table].map((h) => {
+    const value = (entity as unknown as Record<string, unknown>)[h];
+    return Array.isArray(value) ? JSON.stringify(value) : String(value ?? "");
+  });
 }
 export async function upsertSheet(table: Table, entity: Entity) {
   await ensureTables();

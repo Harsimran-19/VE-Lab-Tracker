@@ -14,12 +14,7 @@ export async function mutate(url: string, body: unknown, method = "POST") {
   return data;
 }
 export type ProjectAction =
-  | "create"
-  | "goal"
-  | "phase"
-  | "milestone"
-  | "complete"
-  | "reopen";
+  "create" | "goal" | "phase" | "milestone" | "complete" | "pause" | "reopen";
 export function ProjectForm({
   project,
   action,
@@ -46,6 +41,7 @@ export function ProjectForm({
     phase: "Change research phase",
     milestone: "Set next milestone",
     complete: "Complete project",
+    pause: "Put project on hold",
     reopen: "Reopen project",
   };
   async function submit(e: React.FormEvent) {
@@ -161,6 +157,13 @@ export function ProjectForm({
               reporting.
             </p>
           )}
+          {action === "pause" && (
+            <p>
+              Put <strong>{project?.name}</strong> on hold? Weekly reporting and
+              reminders will pause. You can resume it whenever work begins
+              again.
+            </p>
+          )}
         </fieldset>
         {error && (
           <p className="error" role="alert">
@@ -179,9 +182,11 @@ export function ProjectForm({
                 ? "Refresh workspace"
                 : action === "complete"
                   ? "Complete project"
-                  : action === "reopen"
-                    ? "Reopen project"
-                    : "Save project"}
+                  : action === "pause"
+                    ? "Put on hold"
+                    : action === "reopen"
+                      ? "Reopen project"
+                      : "Save project"}
           </button>
         </div>
       </form>

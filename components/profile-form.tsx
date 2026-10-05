@@ -12,6 +12,8 @@ export function ProfileForm({
   const person = data.people.find((p) => p.id === data.identity.personId)!,
     [name, setName] = useState(person.name),
     [reminders, setReminders] = useState(person.reminders !== "false"),
+    [academicRole, setAcademicRole] = useState(person.academicRole ?? ""),
+    [affiliation, setAffiliation] = useState(person.affiliation ?? ""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -21,7 +23,11 @@ export function ProfileForm({
     setError("");
     setNotice("");
     try {
-      await mutate("/api/profile", { name, reminders }, "PATCH");
+      await mutate(
+        "/api/profile",
+        { name, reminders, academicRole, affiliation },
+        "PATCH",
+      );
       await saved();
       setNotice("Account saved.");
     } catch (e) {
@@ -46,6 +52,31 @@ export function ProfileForm({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        <details className="form-disclosure">
+          <summary>
+            Research profile <span className="optional-label">Optional</span>
+          </summary>
+          <div className="entry-fields">
+            <label>
+              Academic role
+              <input
+                maxLength={150}
+                placeholder="e.g. PhD student or research assistant"
+                value={academicRole}
+                onChange={(e) => setAcademicRole(e.target.value)}
+              />
+            </label>
+            <label>
+              Affiliation
+              <input
+                maxLength={300}
+                placeholder="University, school or research group"
+                value={affiliation}
+                onChange={(e) => setAffiliation(e.target.value)}
+              />
+            </label>
+          </div>
+        </details>
         <label className="check-label">
           <input
             type="checkbox"

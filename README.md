@@ -10,11 +10,13 @@ Member: Google sign-in → confirm name → choose projects → My work → repo
 
 - **Home:** manager lab overview or the member's own work.
 - **Projects:** discover and join active projects, read shared reports, or review completed projects.
-- **Project page:** latest reports and real members. Managers change research phase, set a milestone and date, or complete/reopen the project. Earlier weeks are available when history exists.
+- **Project page:** Progress opens first, with reports, members and optional responsibilities. Project details contains the full research title, lead, priority, methods, resources, notes, publication plan and external collaborators. Managers set the research phase and milestone, or pause, complete and reopen the project. Earlier weeks are available when history exists.
 - **Team:** every actual signup, including people without projects. Both roles can open a member’s contact details and project links from this directory or a report/project member name.
-- **Account:** name and email preference. Managers also set the reporting day, time and timezone and test their email delivery.
+- **Account:** name and email preference, with academic role and affiliation inside an optional research profile. Managers also set the reporting day, time and timezone and test their email delivery.
 
-Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. There are no publication fields, affiliation/biography forms, imported people, roster linking or responsibility assignment. Team is a shared directory; members sign themselves up. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. Research and publication details can be added later. Managers assign responsibilities to people who have joined the project; owners can update their own status. Responsibilities can be archived and restored. External collaborators are project contacts, not signups or reporting members. Team remains a shared directory of actual signups.
+
+Weekly reports still ask for accomplishments, next steps and help needed. Members can optionally tag several of their responsibilities in one report. The server records their names with the report so earlier reports remain understandable after responsibilities change. There are no hours or confidence-score requirements. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
 
 ## Testing both roles on your deployment
 
@@ -29,6 +31,8 @@ Creating a project does not create members. Members appear after their own Googl
 
 The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries** automatically when needed. Old tracker tabs are neither read nor imported; production starts with zero projects and only actual Google signups. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate clean tabs without altering its old records. No initialization/reset step is needed.
 
+Existing lab tabs upgrade automatically: the app appends optional headers to the original Projects, Members and Reports schemas without modifying data rows. Unexpected headers are refused rather than overwritten. Resource links, responsibilities, collaborators and report responsibility labels are stored as validated JSON in the corresponding lab row. No sample workbook data is imported.
+
 Google signup requires a verified email. Manager permissions come from `ADMIN_EMAILS`; users cannot choose their role. `harsimran1869@gmail.com` is the designated test manager. Google login requests only `openid`, `email`, `profile`; the service account writes to Sheets. Writes use RAW values. Delivery logs stay server-side.
 
 One deterministic report ID per person/project/week prevents duplicate logical reports on retries. Current-week reports can be edited; past weeks cannot be backdated by the client. Membership IDs are stable. Sheets has no transactions: concurrent edits to the same report may overwrite one another. Last rows with matching IDs are the logical record.
@@ -37,8 +41,9 @@ One deterministic report ID per person/project/week prevents duplicate logical r
 
 - Outstanding weekly updates: one combined reminder per member/week during the 24 hours before the cutoff.
 - Project milestones: one reminder the day before and one on the due date.
+- Responsibility deadlines: reminders to the owner the day before and on the due date; done and archived responsibilities are excluded.
 - Managers: one weekly summary after the reporting cutoff, including missing reports and unresolved help.
-- Completed projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week.
+- Completed and paused projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week.
 
 `vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
 

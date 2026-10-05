@@ -230,3 +230,103 @@ test("Google permission failures are actionable and do not expose upstream crede
       !e.message.includes("never-return"),
   );
 });
+
+test("upgrading existing lab tabs appends only headers and keeps all original rows", async () => {
+  const legacy = { LabProjects: 7, LabMembers: 5, LabReports: 10 };
+  const data = ranges();
+  const tabs = new Map(
+    Object.entries(TABLES).map(([title], i) => [
+      title,
+      data.valueRanges[i].values.map((row) =>
+        row.slice(0, legacy[title as keyof typeof legacy] ?? row.length),
+      ),
+    ]),
+  );
+  tabs
+    .get("LabReports")!
+    .push([
+      "old-report",
+      "2026-09-28T04:00:00Z",
+      "2026-09-28T04:00:00Z",
+      "2026-09-28",
+      fixture().projects[0].id,
+      "member",
+      "Earlier progress",
+      "Next step",
+      "false",
+      "",
+    ]);
+  const originals = new Map(
+    [...tabs].map(([title, rows]) => [title, structuredClone(rows.slice(1))]),
+  );
+  const writes: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = decodeURIComponent(String(input));
+    if (url.includes("?fields=")) return response(metadata());
+    if (url.includes("values:batchGet"))
+      return response({
+        valueRanges: Object.keys(TABLES).map((title) => ({
+          values: tabs.get(title),
+        })),
+      });
+    const title = url.match(/'([^']+)'!/)![1];
+    if (init?.method) {
+      assert.equal(init.method, "PUT");
+      assert.match(url, /!(H|F|K)1\?valueInputOption=RAW$/);
+      writes.push(title);
+      tabs.get(title)![0].push(...JSON.parse(String(init.body)).values[0]);
+      return response({});
+    }
+    return response({ values: tabs.get(title) });
+  };
+  const upgraded = await readSheet();
+  assert.deepEqual(writes, ["LabProjects", "LabMembers", "LabReports"]);
+  assert.equal(upgraded.updates[0].progress, "Earlier progress");
+  assert.deepEqual(upgraded.projects[0].workstreams, []);
+  for (const [title, rows] of originals)
+    assert.deepEqual(tabs.get(title)!.slice(1), rows);
+  await readSheet();
+  assert.equal(writes.length, 3);
+});
+
+test("structured research data round-trips as JSON and malformed data is surfaced", async () => {
+  const project = {
+    ...fixture().projects[0],
+    links: [{ label: "Data", url: "https://example.com/data" }],
+    workstreams: [
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Review",
+        ownerId: "member",
+        status: "In progress" as const,
+        due: "",
+        notes: "Multiline\nnotes",
+        archived: false,
+      },
+    ],
+    collaborators: [],
+  };
+  let written: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).includes("?fields=")) return response(metadata());
+    if (!init?.method) return response({ values: [["id"]] });
+    written = JSON.parse(String(init.body)).values[0];
+    return response({});
+  };
+  await upsertSheet("LabProjects", project);
+  assert.deepEqual(
+    JSON.parse(written[TABLES.LabProjects.indexOf("workstreams")]),
+    project.workstreams,
+  );
+  const data = ranges();
+  data.valueRanges[0].values[1] = written;
+  globalThis.fetch = async (input) =>
+    response(String(input).includes("values:batchGet") ? data : metadata());
+  assert.deepEqual(
+    (await readSheet()).projects[0].workstreams,
+    project.workstreams,
+  );
+  data.valueRanges[0].values[1][TABLES.LabProjects.indexOf("links")] =
+    '[{"label":"Unsafe","url":"javascript:alert(1)"}]';
+  await assert.rejects(readSheet(), /Invalid project links/);
+});

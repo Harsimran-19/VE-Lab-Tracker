@@ -7,6 +7,45 @@ export const STAGES = [
   "Writing",
   "Submission",
 ] as const;
+export const PUBLICATION_STATUSES = [
+  "Not submitted",
+  "In preparation",
+  "Under review",
+  "Revise and resubmit",
+  "Rejected — repositioning",
+  "Resubmitted",
+  "Accepted",
+  "Published",
+] as const;
+export const PRIORITIES = ["Push", "Steady", "Background"] as const;
+export const WORKSTREAM_STATUSES = [
+  "Not started",
+  "In progress",
+  "Blocked",
+  "Done",
+] as const;
+export interface ResourceLink {
+  label: string;
+  url: string;
+}
+export interface Workstream {
+  id: string;
+  name: string;
+  ownerId: string;
+  status: (typeof WORKSTREAM_STATUSES)[number];
+  due: string;
+  notes: string;
+  archived?: boolean;
+}
+export interface Collaborator {
+  id: string;
+  name: string;
+  affiliation: string;
+  role: string;
+  email: string;
+  contactVia: string;
+  notes: string;
+}
 export interface Project {
   id: string;
   name: string;
@@ -14,7 +53,19 @@ export interface Project {
   phase: string;
   milestone: string;
   due: string;
-  state: "active" | "completed";
+  state: "active" | "completed" | "on-hold";
+  fullTitle?: string;
+  leadId?: string;
+  priority?: string;
+  methods?: string;
+  publicationStatus?: string;
+  targetJournal?: string;
+  altJournal?: string;
+  targetConference?: string;
+  notes?: string;
+  links?: ResourceLink[];
+  workstreams?: Workstream[];
+  collaborators?: Collaborator[];
 }
 export interface Person {
   id: string;
@@ -22,6 +73,8 @@ export interface Person {
   email: string;
   setupComplete: string;
   reminders: string;
+  academicRole?: string;
+  affiliation?: string;
 }
 export interface Membership {
   id: string;
@@ -40,6 +93,7 @@ export interface Update {
   nextPlan: string;
   needsHelp: string;
   blockers: string;
+  workstreams?: { id: string; name: string }[];
 }
 export interface Settings {
   id: string;

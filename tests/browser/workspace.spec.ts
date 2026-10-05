@@ -193,19 +193,32 @@ test("members read team progress and self-join but cannot change manager data or
   const newMember = (await store(page)).identity.personId;
   // Signing up is enough to appear in Team: no project membership is required.
   await sample(page, "admin");
-  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Team", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Team", exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".team-card")).toHaveCount(3);
   const unjoined = page.locator(".team-card").filter({ hasText: "Jamie Rao" });
   await expect(unjoined).toContainText("No projects joined");
   await unjoined.click();
-  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "No projects joined", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No projects joined", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Edit my account", exact: true }),
+  ).toHaveCount(0);
   await page.context().addCookies(memberCookies);
   await page.goto(`/team/${newMember}`);
-  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Edit my account", exact: true }),
+  ).toBeVisible();
   await page.goto("/");
   await page
     .getByRole("link", { name: "Choose a project", exact: true })
@@ -283,42 +296,96 @@ test("members read team progress and self-join but cannot change manager data or
   ).toBe(400);
 });
 
-test("Team lets both roles open current member details and projects on desktop and mobile", async ({ page }) => {
+test("Team lets both roles open current member details and projects on desktop and mobile", async ({
+  page,
+}) => {
   await sample(page, "admin");
-  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Team", exact: true })
+    .click();
   await expect(page.locator(".team-card")).toHaveCount(3);
-  await page.screenshot({ path: "test-results/team-directory.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/team-directory.png",
+    fullPage: true,
+  });
   await page.locator(".team-card").filter({ hasText: "Alex Chen" }).click();
-  await expect(page.getByRole("heading", { name: "Alex Chen", exact: true, level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "member@demo.invalid", exact: true })).toHaveAttribute("href", "mailto:member@demo.invalid");
-  await expect(page.getByRole("link", { name: "Edit my account", exact: true })).toHaveCount(0);
-  await page.locator(".research-card").filter({ hasText: "Interview pilot" }).click();
-  await page.locator(".project-members").getByRole("link", { name: "Jamie Rao", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Alex Chen", exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "member@demo.invalid", exact: true }),
+  ).toHaveAttribute("href", "mailto:member@demo.invalid");
+  await expect(
+    page.getByRole("link", { name: "Edit my account", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .locator(".research-card")
+    .filter({ hasText: "Interview pilot" })
+    .click();
+  await page
+    .locator(".project-members")
+    .getByRole("link", { name: "Jamie Rao", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(page.locator(".research-card")).toContainText("Interview pilot");
-  await page.screenshot({ path: "test-results/member-details.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/member-details.png",
+    fullPage: true,
+  });
   // Next.js can stream a not-found page with HTTP 200; verify its actual UI.
   await page.goto("/team/does-not-exist");
-  await expect(page.getByRole("heading", { name: "Member not found.", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Member not found.", exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".member-contact")).toHaveCount(0);
   await page.getByRole("link", { name: "Back to Team", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Team", exact: true }),
+  ).toBeVisible();
   await page.goto("/people");
   await expect(page).toHaveURL(/\/team$/);
   await sample(page, "member");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("navigation").getByRole("link", { name: "Team", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Team", exact: true })
+    .click();
   await expect(page.locator(".team-card")).toHaveCount(3);
-  await expect(page.getByRole("navigation").getByRole("link", { name: "Team", exact: true })).toHaveAttribute("aria-current", "page");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "test-results/mobile-team.png", fullPage: true });
+  await expect(
+    page
+      .getByRole("navigation")
+      .getByRole("link", { name: "Team", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/mobile-team.png",
+    fullPage: true,
+  });
   await page.locator(".team-card").filter({ hasText: "Jamie Rao" }).click();
-  await expect(page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Jamie Rao", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(page.getByRole("textbox")).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "test-results/mobile-member-details.png", fullPage: true });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/mobile-member-details.png",
+    fullPage: true,
+  });
   await page.locator(".research-card").click();
-  await expect(page.getByText("Reviewed the sampling plan.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Reviewed the sampling plan.", { exact: true }),
+  ).toBeVisible();
 });
 
 test("manager reviews real members, sets only phase and milestone, and completion stops reporting", async ({
@@ -370,6 +437,7 @@ test("manager reviews real members, sets only phase and milestone, and completio
     path: "test-results/project-workspace.png",
     fullPage: true,
   });
+  await page.getByText("Manage project", { exact: true }).click();
   await page
     .getByRole("button", { name: "Complete project", exact: true })
     .click();
@@ -409,7 +477,7 @@ test("manager reviews real members, sets only phase and milestone, and completio
   await expect(page.locator(".update-card")).toHaveCount(2);
 });
 
-test("account has only name and preferences; manager sets the schedule and previews email", async ({
+test("account keeps optional research details collapsed; manager sets the schedule and previews email", async ({
   page,
 }) => {
   await sample(page, "admin");
@@ -559,7 +627,7 @@ test("removed legacy flows stay unavailable and anonymous production cannot read
         })
       ).status(),
     ).toBe(401);
-  for (const path of ["profile", "settings"])
+  for (const path of ["profile", "settings", "workstreams"])
     expect(
       (
         await page.request.patch(`${origin}/api/${path}`, {
@@ -581,4 +649,262 @@ test("removed legacy flows stay unavailable and anonymous production cannot read
   expect(
     (await page.request.get(`${origin}/api/cron/reminders`)).status(),
   ).toBe(503);
+});
+
+test("research detail stays optional while owners track responsibilities and share one report", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await sample(page, "admin");
+  const projectId = crypto.randomUUID();
+  expect(
+    (
+      await write(page, "/api/projects", {
+        id: projectId,
+        name: "Research detail pilot",
+        goal: "Study how teams learn",
+      })
+    ).ok(),
+  ).toBe(true);
+  const managerData = await store(page);
+  await page.goto(`/projects/${projectId}`);
+  await expect(
+    page.getByRole("button", { name: "Progress", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "Edit research details" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Project details", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Edit research details", exact: true })
+    .click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Full research title", { exact: true })
+    .fill("How Research Teams Learn from Peer Feedback");
+  await dialog
+    .getByLabel("Project lead", { exact: true })
+    .selectOption(managerData.identity.personId);
+  await dialog.getByLabel("Priority", { exact: true }).selectOption("Push");
+  await dialog
+    .getByLabel("Research methods", { exact: true })
+    .fill("Mixed methods: interviews and surveys");
+  await dialog
+    .getByRole("button", { name: "Add a resource link", exact: true })
+    .click();
+  await dialog.getByLabel("Link name", { exact: true }).fill("Research folder");
+  await dialog
+    .getByLabel("URL", { exact: true })
+    .fill("https://example.com/research");
+  await dialog
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Research folder" }),
+  ).toHaveAttribute("href", "https://example.com/research");
+  await page.getByText("Publication", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Edit publication plan", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Publication status", { exact: true })
+    .selectOption("Under review");
+  await dialog
+    .getByLabel("Target journal", { exact: true })
+    .fill("Research Journal");
+  await dialog
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByText("Collaborators", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Add collaborator", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Name", { exact: true }).fill("Taylor Lee");
+  await dialog.getByLabel("Role on project", { exact: true }).fill("Co-author");
+  await dialog
+    .getByLabel("Affiliation", { exact: true })
+    .fill("Partner university");
+  await dialog
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".collaborator-row")).toContainText("Taylor Lee");
+  await page.screenshot({
+    path: "test-results/research-details.png",
+    fullPage: true,
+  });
+  await sample(page, "member");
+  if ((await store(page)).needsOnboarding) await onboard(page, "Alex Chen");
+  await page.goto(`/projects/${projectId}`);
+  await page.getByRole("button", { name: "Join project", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Write weekly update", exact: true }),
+  ).toBeVisible();
+  const personId = (await store(page)).identity.personId;
+  await sample(page, "admin");
+  await page.goto(`/projects/${projectId}`);
+  for (const name of ["Literature review", "Data collection"]) {
+    await page
+      .getByRole("button", { name: "Add responsibility", exact: true })
+      .click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Responsibility", { exact: true }).fill(name);
+    await dialog.getByLabel("Owner", { exact: true }).selectOption(personId);
+    await dialog
+      .getByLabel("Status", { exact: true })
+      .selectOption("In progress");
+    await dialog
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+  }
+  await page.screenshot({
+    path: "test-results/research-progress.png",
+    fullPage: true,
+  });
+  await sample(page, "member");
+  await expect(page.locator(".my-responsibility")).toHaveCount(2);
+  await page.goto(`/projects/${projectId}`);
+  await page
+    .getByLabel("Status for Literature review", { exact: true })
+    .selectOption("Blocked");
+  await expect(page.getByRole("status")).toContainText(
+    "Responsibility updated",
+  );
+  const memberData = await store(page);
+  const stream = memberData.projects.find(
+    (p: { id: string }) => p.id === projectId,
+  ).workstreams[0];
+  expect(
+    (
+      await write(
+        page,
+        "/api/workstreams",
+        {
+          projectId,
+          action: "save",
+          workstream: {
+            ...stream,
+            archived: undefined,
+            name: "Forged assignment",
+          },
+        },
+        "PATCH",
+      )
+    ).status(),
+  ).toBe(403);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByRole("button", { name: "Write weekly update", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox")).toHaveCount(2);
+  await dialog
+    .getByText("Which responsibilities does this cover?", { exact: false })
+    .click();
+  await dialog
+    .getByRole("checkbox", { name: "Literature review", exact: true })
+    .check();
+  await dialog
+    .getByRole("checkbox", { name: "Data collection", exact: true })
+    .check();
+  await dialog
+    .getByLabel("What did you accomplish?", { exact: true })
+    .fill("Reviewed papers and gathered pilot responses.");
+  await dialog
+    .getByLabel("What will you do next?", { exact: true })
+    .fill("Compare the findings.");
+  await page.screenshot({
+    path: "test-results/mobile-research-report.png",
+    fullPage: true,
+  });
+  await dialog
+    .getByRole("button", { name: "Submit update", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".report-workstreams")).toContainText(
+    "Literature review · Data collection",
+  );
+  await page.reload();
+  await expect(page.locator(".project-meta")).toContainText(
+    "Last report today",
+  );
+  await page
+    .getByRole("button", { name: "Project details", exact: true })
+    .click();
+  await expect(
+    page.getByText("How Research Teams Learn from Peer Feedback", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit research details", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/mobile-research-details.png",
+    fullPage: true,
+  });
+  await page.goto("/account");
+  await page.getByText("Research profile", { exact: false }).click();
+  await page
+    .getByLabel("Academic role", { exact: true })
+    .fill("Research assistant");
+  await page
+    .getByLabel("Affiliation", { exact: true })
+    .fill("Venture Engineering Lab");
+  await page.getByRole("button", { name: "Save account", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Account saved");
+  await page.goto(`/team/${personId}`);
+  await expect(page.locator(".member-affiliation")).toContainText(
+    "Research assistant · Venture Engineering Lab",
+  );
+  await sample(page, "admin");
+  await page.goto(`/projects/${projectId}`);
+  await page
+    .getByRole("button", { name: "Edit Literature review", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Archive responsibility", exact: true })
+    .click();
+  await dialog.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".responsibility-row")).toHaveCount(1);
+  await expect(page.locator(".report-workstreams")).toContainText(
+    "Literature review",
+  );
+  await page.getByText("Manage project", { exact: true }).click();
+  await page.getByRole("button", { name: "Put on hold", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Put on hold", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByText("Project on hold", { exact: true }),
+  ).toBeVisible();
+  await sample(page, "member");
+  expect(
+    (
+      await write(page, "/api/entries", {
+        projectId,
+        weekStart: (await store(page)).weekStart,
+        progress: "Late",
+        nextPlan: "Later",
+        needsHelp: false,
+        blockers: "",
+      })
+    ).status(),
+  ).toBe(409);
 });

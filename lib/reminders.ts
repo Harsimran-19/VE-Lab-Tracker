@@ -175,6 +175,14 @@ export function planReminders(
         (u) =>
           `- ${store.people.find((p) => p.id === u.personId)?.name ?? "Member"} · ${active.find((p) => p.id === u.projectId)?.name}: ${u.blockers}`,
       );
+      for (const project of active) {
+        for (const w of (project.workstreams ?? []).filter(
+          (w) => !w.archived && w.status === "Blocked",
+        ))
+          requests.push(
+            `- ${store.people.find((p) => p.id === w.ownerId)?.name ?? "Member"} · ${project.name}: ${w.name} is blocked.`,
+          );
+      }
       add(
         "weekly-summary",
         summaryWeek,
@@ -200,6 +208,26 @@ export function planReminders(
         `${project.milestone}\nProject: ${project.name}\nDue: ${project.due}\n\nOpen the project: ${origin}/projects/${encodeURIComponent(project.id)}`,
         project.id,
       );
+    }
+    for (const project of active) {
+      for (const workstream of (project.workstreams ?? []).filter(
+        (w) =>
+          !w.archived &&
+          w.status !== "Done" &&
+          w.due &&
+          w.ownerId === person.id,
+      )) {
+        const days = dayDifference(workstream.due, today);
+        if (days !== 0 && days !== 1) continue;
+        add(
+          days === 0 ? "responsibility-due" : "responsibility-before",
+          workstream.id,
+          workstream.due,
+          `${days === 0 ? "Due today" : "Due tomorrow"} · ${workstream.name}`,
+          `${workstream.name}\nProject: ${project.name}\nDue: ${workstream.due}\n\nOpen the project: ${origin}/projects/${encodeURIComponent(project.id)}`,
+          project.id,
+        );
+      }
     }
   }
   return result;

@@ -11,9 +11,10 @@ export function memberProjects(data: Workspace, personId: string) {
   );
   return data.projects
     .filter((p) => joined.has(p.id))
-    .sort((a, b) =>
-      Number(a.state === "completed") - Number(b.state === "completed") ||
-      a.name.localeCompare(b.name),
+    .sort(
+      (a, b) =>
+        Number(a.state === "completed") - Number(b.state === "completed") ||
+        a.name.localeCompare(b.name),
     );
 }
 
@@ -45,11 +46,21 @@ export function TeamDirectory({ data }: { data: Workspace }) {
                     )}
                   </h2>
                   <p className="team-email">{person.email}</p>
+                  {(person.academicRole || person.affiliation) && (
+                    <p className="team-role">
+                      {[person.academicRole, person.affiliation]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
                   <p className="team-projects">
                     {projects.length
-                      ? projects.map((p) =>
-                          `${p.name}${p.state === "completed" ? " (completed)" : ""}`,
-                        ).join(" · ")
+                      ? projects
+                          .map(
+                            (p) =>
+                              `${p.name}${p.state === "completed" ? " (completed)" : ""}`,
+                          )
+                          .join(" · ")
                       : "No projects joined"}
                   </p>
                 </div>
@@ -69,18 +80,31 @@ export function TeamDirectory({ data }: { data: Workspace }) {
   );
 }
 
-export function MemberContact({ person, own }: {
+export function MemberContact({
+  person,
+  own,
+}: {
   person: Person;
   own: boolean;
 }) {
   return (
     <section className="panel dashboard-panel member-contact">
       <h2>Contact</h2>
+      {(person.academicRole || person.affiliation) && (
+        <p className="member-affiliation">
+          {[person.academicRole, person.affiliation]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
       <a className="member-email" href={`mailto:${person.email}`}>
-        <Mail size={18} aria-hidden="true" />{person.email}
+        <Mail size={18} aria-hidden="true" />
+        {person.email}
       </a>
       {own && (
-        <Link className="button secondary" href="/account">Edit my account</Link>
+        <Link className="button secondary" href="/account">
+          Edit my account
+        </Link>
       )}
     </section>
   );

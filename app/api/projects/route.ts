@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { authorizedContext } from "@/lib/auth";
 import { AppError, requireAdmin, requireSameOrigin } from "@/lib/access";
 import { apiError, readJson } from "@/lib/api";
-import { newProjectSchema, projectChangeSchema } from "@/lib/schema";
+import { newProjectSchema } from "@/lib/schema";
 import { saveProject } from "@/lib/store";
+import { planProjectChange } from "@/lib/project-details";
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
@@ -36,34 +37,7 @@ export async function PATCH(request: Request) {
   try {
     requireSameOrigin(request);
     const { identity, store } = await authorizedContext();
-    requireAdmin(identity);
-    const input = projectChangeSchema.parse(await readJson(request));
-    const existing = store.projects.find((p) => p.id === input.id);
-    if (!existing) throw new AppError("Project not found.", 404);
-    const project = { ...existing };
-    switch (input.action) {
-      case "goal":
-        project.name = input.name;
-        project.goal = input.goal;
-        break;
-      case "phase":
-        project.phase = input.phase;
-        break;
-      case "milestone":
-        project.milestone = input.milestone;
-        project.due = input.due;
-        break;
-      case "clear-milestone":
-        project.milestone = "";
-        project.due = "";
-        break;
-      case "complete":
-        project.state = "completed";
-        break;
-      case "reopen":
-        project.state = "active";
-        break;
-    }
+    const project = planProjectChange(store, identity, await readJson(request));
     await saveProject(project);
     return NextResponse.json({ project });
   } catch (e) {

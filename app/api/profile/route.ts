@@ -13,6 +13,12 @@ export async function PATCH(request: Request) {
       ...store.people.find((p) => p.id === identity.personId)!,
       name: input.name,
       reminders: String(input.reminders),
+      ...(input.academicRole !== undefined
+        ? { academicRole: input.academicRole }
+        : {}),
+      ...(input.affiliation !== undefined
+        ? { affiliation: input.affiliation }
+        : {}),
     });
     return NextResponse.json({ saved: true });
   } catch (e) {

@@ -33,6 +33,18 @@ export function EntryForm({
     [error, setError] = useState(""),
     [confirmed, setConfirmed] = useState(false);
   const project = data.projects.find((p) => p.id === projectId)!;
+  const available = (project.workstreams ?? []).filter(
+    (w) => !w.archived && w.ownerId === data.identity.personId,
+  );
+  const options = [
+    ...available.map((w) => ({ id: w.id, name: w.name })),
+    ...(existing?.workstreams ?? []).filter(
+      (w) => !available.some((a) => a.id === w.id),
+    ),
+  ];
+  const [workstreamIds, setWorkstreamIds] = useState(
+    existing?.workstreams?.map((w) => w.id) ?? [],
+  );
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -46,6 +58,7 @@ export function EntryForm({
           nextPlan,
           needsHelp,
           blockers: needsHelp ? blockers : "",
+          workstreamIds,
         });
         setConfirmed(true);
       }
@@ -75,6 +88,38 @@ export function EntryForm({
           className="entry-fields"
           disabled={busy || confirmed || expired}
         >
+          {options.length > 0 && (
+            <details
+              className="form-disclosure"
+              open={workstreamIds.length > 0 || undefined}
+            >
+              <summary>
+                Which responsibilities does this cover?{" "}
+                <span className="optional-label">Optional</span>
+              </summary>
+              <div className="report-responsibility-options">
+                {options.map((w) => (
+                  <label className="check-label" key={w.id}>
+                    <input
+                      type="checkbox"
+                      checked={workstreamIds.includes(w.id)}
+                      onChange={(e) =>
+                        setWorkstreamIds(
+                          e.target.checked
+                            ? [...workstreamIds, w.id]
+                            : workstreamIds.filter((id) => id !== w.id),
+                        )
+                      }
+                    />
+                    {w.name}
+                  </label>
+                ))}
+              </div>
+              <p className="field-help">
+                One update can cover several responsibilities.
+              </p>
+            </details>
+          )}
           <label>
             What did you accomplish?
             <textarea

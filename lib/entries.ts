@@ -24,7 +24,7 @@ export function planEntry(
   if (!project) throw new AppError("Project not found.", 404);
   if (project.state !== "active")
     throw new AppError(
-      "This project is complete. Weekly reporting has stopped.",
+      "This project is not active. Weekly reporting has stopped.",
       409,
     );
   if (
@@ -46,6 +46,31 @@ export function planEntry(
     existing = store.updates.find((u) => u.id === id);
   if (existing && existing.personId !== identity.personId)
     throw new AppError("This report belongs to another member.", 403);
+  const selections =
+    input.workstreamIds === undefined
+      ? existing?.workstreams
+      : [...new Set(input.workstreamIds)].map((streamId) => {
+          const stream = project.workstreams?.find((w) => w.id === streamId);
+          const previous = existing?.workstreams?.find(
+            (w) => w.id === streamId,
+          );
+          // Retain a historical selection after an assignment is archived or reassigned.
+          if (
+            previous &&
+            (!stream || stream.archived || stream.ownerId !== identity.personId)
+          )
+            return previous;
+          if (
+            !stream ||
+            stream.archived ||
+            stream.ownerId !== identity.personId
+          )
+            throw new AppError(
+              "Choose one of your responsibilities in this project.",
+              403,
+            );
+          return { id: stream.id, name: stream.name };
+        });
   const values = {
     progress: input.progress,
     nextPlan: input.nextPlan,
@@ -54,7 +79,11 @@ export function planEntry(
   };
   if (
     existing &&
-    Object.entries(values).every(([k, v]) => existing[k as keyof Update] === v)
+    Object.entries(values).every(
+      ([k, v]) => existing[k as keyof Update] === v,
+    ) &&
+    JSON.stringify(existing.workstreams ?? []) ===
+      JSON.stringify(selections ?? [])
   )
     return existing;
   return {
@@ -65,5 +94,6 @@ export function planEntry(
     projectId: project.id,
     personId: identity.personId,
     ...values,
+    ...(selections?.length ? { workstreams: selections } : { workstreams: [] }),
   };
 }
