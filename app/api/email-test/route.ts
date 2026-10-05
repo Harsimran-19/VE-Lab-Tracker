@@ -5,7 +5,7 @@ import { AppError, requireAdmin, requireSameOrigin } from "@/lib/access";
 import { apiError, readJson } from "@/lib/api";
 import { z } from "zod";
 import { isDemo } from "@/lib/config";
-import { gmailConfiguration, sendGmail } from "@/lib/mail";
+import { mailConfiguration, sendMail } from "@/lib/mail";
 import { addReminder, saveReminder } from "@/lib/store";
 export async function POST(request: Request) {
   try {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
         simulated: true,
         message: "Sample preview only. No email was sent.",
       });
-    gmailConfiguration();
+    mailConfiguration();
     const now = new Date();
     if (
       store.reminders?.some(
@@ -45,11 +45,11 @@ export async function POST(request: Request) {
       providerId: "",
     };
     await addReminder(reminder);
-    const providerId = await sendGmail({
+    const providerId = await sendMail({
       to: identity.email,
       id: reminder.id,
-      subject: "VE Lab · Gmail test",
-      text: `Hi ${identity.name},\n\nYour lab can send weekly update reminders, milestone reminders and manager summaries through Gmail. No purchased domain is needed.\n\nVenture Engineering Lab`,
+      subject: "VE Lab · Email test",
+      text: `Hi ${identity.name},\n\nYour lab can send weekly update reminders, milestone reminders and manager summaries through Zoho SMTP. No purchased domain is needed.\n\nVenture Engineering Lab`,
     });
     await saveReminder({
       ...reminder,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       sentAt: new Date().toISOString(),
     });
     return NextResponse.json({
-      message: `Gmail accepted the test email to ${identity.email}. Check your inbox and spam folder.`,
+      message: `The mail server accepted the test email to ${identity.email}. Check your inbox and spam folder.`,
     });
   } catch (e) {
     return apiError(e);

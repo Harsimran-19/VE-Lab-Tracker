@@ -1,26 +1,27 @@
 import "server-only";
 import nodemailer from "nodemailer";
 import { AppError } from "./access";
+import { smtpSettings } from "./mail-config";
 
-export function gmailConfiguration() {
-  const user = process.env.GMAIL_USER?.trim();
-  const password = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
-  if (!user || !password || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user))
+export function mailConfiguration() {
+  const settings = smtpSettings();
+  if (!settings)
     throw new AppError(
-      "Gmail sending is not set up yet. Follow the Gmail section in the setup guide.",
+      "Email is not configured. Set the Zoho sender, password and SMTP host in private environment settings.",
       503,
     );
-  return { user, password };
+  return settings;
 }
-export async function sendGmail(
+export async function sendMail(
   message: { to: string; subject: string; text: string; id: string },
   transportFactory = nodemailer.createTransport,
 ) {
-  const { user, password } = gmailConfiguration();
+  const { host, port, secure, user, password } = mailConfiguration();
   const transport = transportFactory({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    host,
+    port,
+    secure,
+    requireTLS: true,
     auth: { user, pass: password },
     connectionTimeout: 10000,
     greetingTimeout: 10000,
@@ -44,7 +45,7 @@ export async function sendGmail(
     return result.messageId as string;
   } catch {
     throw new AppError(
-      "Gmail did not confirm the email. Check the sender address and Google app password. A regular Google password will not work.",
+      "The mail server did not confirm sending. Check the SMTP host, port and Zoho credentials in private environment settings.",
       503,
     );
   } finally {

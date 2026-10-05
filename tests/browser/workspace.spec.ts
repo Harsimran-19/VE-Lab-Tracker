@@ -353,7 +353,7 @@ test("manager reviews real members, sets only phase and milestone, and completio
   await expect(page.locator(".update-card")).toHaveCount(2);
 });
 
-test("account has only name and preferences; manager sets the schedule and previews Gmail", async ({
+test("account has only name and preferences; manager sets the schedule and previews email", async ({
   page,
 }) => {
   await sample(page, "admin");

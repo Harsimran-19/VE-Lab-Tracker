@@ -1,5 +1,6 @@
 import type { Identity, Store, Workspace } from "./types";
 import { dateInZone, reportingDeadline, startOfWeek } from "./calendar";
+import { smtpSettings } from "./mail-config";
 export class AppError extends Error {
   constructor(
     message: string,
@@ -56,9 +57,7 @@ export function workspaceFor(
     today,
     weekStart: startOfWeek(today),
     reportingDue: reportingDeadline(store.settings, now),
-    emailReady: Boolean(
-      process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && !demo,
-    ),
+    emailReady: Boolean(smtpSettings() && !demo),
     cronReady: Boolean((process.env.CRON_SECRET?.length ?? 0) >= 32 && !demo),
     ...(identity.role === "admin"
       ? {

@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { AppError } from "./access";
-import { gmailConfiguration, sendGmail } from "./mail";
+import { mailConfiguration, sendMail } from "./mail";
 import {
   dateInZone,
   dayDifference,
@@ -29,7 +29,7 @@ export function requireCron(
     throw new AppError("Unauthorized.", 401);
 }
 export function emailConfiguration() {
-  gmailConfiguration();
+  mailConfiguration();
   if (!process.env.NEXTAUTH_URL)
     throw new AppError("Set the website URL before enabling reminders.", 503);
   const origin = new URL(process.env.NEXTAUTH_URL);
@@ -208,7 +208,7 @@ export async function sendReminder(
   item: ReturnType<typeof planReminders>[number],
 ) {
   emailConfiguration();
-  return sendGmail({
+  return sendMail({
     to: item.email,
     id: item.reminder.id,
     subject: item.subject,
@@ -230,7 +230,7 @@ export async function deliverReminders(
     needsReview = 0;
   for (const item of planReminders(store, now, admins)) {
     // SMTP has no idempotency guarantee. An existing reservation may already
-    // have reached Gmail, so never resend it automatically after an uncertain run.
+    // have reached the mail server, so never resend it automatically after an uncertain run.
     if (store.reminders?.some((r) => r.id === item.reminder.id)) {
       needsReview++;
       continue;

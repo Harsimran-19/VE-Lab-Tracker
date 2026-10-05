@@ -1,6 +1,6 @@
 # VE Lab Tracker
 
-A simple weekly research tracker for one Venture Engineering Lab team. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Gmail sends reminders without a purchased domain.
+A simple weekly research tracker for one Venture Engineering Lab team. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Zoho SMTP sends reminders using the existing InternUp mailbox. No new domain is needed.
 
 ## Workflow
 
@@ -11,7 +11,7 @@ Member: Google sign-in → confirm name → choose projects → My work → repo
 - **Home:** manager lab overview or the member's own work.
 - **Projects:** discover and join active projects, read shared reports, or review completed projects.
 - **Project page:** latest reports and real members. Managers change research phase, set a milestone and date, or complete/reopen the project. Earlier weeks are available when history exists.
-- **Account:** name and email preference. Managers also set the reporting day, time and timezone and test their own Gmail delivery.
+- **Account:** name and email preference. Managers also set the reporting day, time and timezone and test their email delivery.
 
 Projects start in Idea and Active automatically. New projects have only two creation inputs: name and goal. There are no publication fields, affiliation/biography forms, imported people, roster linking, responsibility assignment or people-management page. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
 
@@ -32,7 +32,7 @@ One deterministic report ID per person/project/week prevents duplicate logical r
 
 `vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
 
-Gmail requires `GMAIL_USER` and a Google-generated `GMAIL_APP_PASSWORD`. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
+Email uses `ZOHO_EMAIL`, `ZOHO_PASSWORD` and the existing InternUp `SMTP_HOST`; `SMTP_PORT` defaults to 465 (TLS) and also supports 587 with required STARTTLS. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
 
 ## Development and verification
 
@@ -51,7 +51,7 @@ npm run typecheck
 npm run test:e2e
 ```
 
-Stop this checkout's dev server before browser tests, which start dev on 3100 and production on 3101. Chromium uses `/usr/bin/chromium` if present; otherwise install the Playwright browser. Tests verify real browser journeys, authorization, report editing, fresh Sheets contracts, local cutoff rules and mocked Gmail. Actual Google consent, Sheets permissions, inbox delivery and Vercel cron need deployment credentials.
+Stop this checkout's dev server before browser tests, which start dev on 3100 and production on 3101. Chromium uses `/usr/bin/chromium` if present; otherwise install the Playwright browser. Tests verify real browser journeys, authorization, report editing, fresh Sheets contracts, local cutoff rules and mocked SMTP. Actual Google consent, Sheets permissions, inbox delivery and Vercel cron need deployment credentials.
 
 ## Deployment
 

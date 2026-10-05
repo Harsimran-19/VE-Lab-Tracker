@@ -1029,8 +1029,8 @@ export function LabApp({
                       <Mail size={20} />
                     </div>
                     <p className="section-copy">
-                      Gmail sends outstanding-update reminders, project deadline
-                      reminders and your weekly lab summary.
+                      Email reminders cover outstanding updates, project
+                      deadline reminders and your weekly lab summary.
                     </p>
                     <span
                       className={`email-state ${data.emailReady ? "ready" : ""}`}
@@ -1038,8 +1038,8 @@ export function LabApp({
                       {data.demo
                         ? "Local test mode"
                         : data.emailReady
-                          ? "Gmail configured"
-                          : "Gmail setup needed"}
+                          ? "Email configured"
+                          : "Email setup needed"}
                     </span>
                     {data.demo || data.emailReady ? (
                       <>
@@ -1070,9 +1070,9 @@ export function LabApp({
                       </>
                     ) : (
                       <p className="field-help">
-                        Activate Gmail once using the{" "}
+                        Activate email once using the{" "}
                         <a
-                          href="https://github.com/Harsimran-19/VE-Lab-Tracker/blob/main/docs/GOOGLE_SETUP.md#gmail-reminders"
+                          href="https://github.com/Harsimran-19/VE-Lab-Tracker/blob/main/docs/GOOGLE_SETUP.md#email-reminders"
                           target="_blank"
                           rel="noreferrer"
                         >

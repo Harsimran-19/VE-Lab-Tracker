@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
-import { gmailConfiguration, sendGmail } from "../lib/mail";
+import { mailConfiguration, sendMail } from "../lib/mail";
 import { AppError } from "../lib/access";
 import { planReminders, deliverReminders, requireCron } from "../lib/reminders";
 import {
@@ -249,12 +249,14 @@ test("cron rejects missing, weak or incorrect secrets without sending anything",
     secret,
   );
 });
-test("Gmail transport uses TLS and app-password auth and requires recipient acceptance", async () => {
-  const names = ["GMAIL_USER", "GMAIL_APP_PASSWORD"];
+test("Zoho SMTP uses TLS, preserves credentials and requires recipient acceptance", async () => {
+  const names = ["ZOHO_EMAIL", "ZOHO_PASSWORD", "SMTP_HOST", "SMTP_PORT"];
   const saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
   Object.assign(process.env, {
-    GMAIL_USER: "sender@gmail.com",
-    GMAIL_APP_PASSWORD: "abcd efgh ijkl mnop",
+    ZOHO_EMAIL: "sender@example.com",
+    ZOHO_PASSWORD: "unit-test pass with spaces",
+    SMTP_HOST: "smtppro.zoho.com",
+    SMTP_PORT: "465",
   });
   let closed = 0;
   const transport = nodemailer.createTransport({ jsonTransport: true });
@@ -262,12 +264,13 @@ test("Gmail transport uses TLS and app-password auth and requires recipient acce
     nodemailer,
     "createTransport",
     (options: SMTPTransport.Options) => {
-      assert.equal(options.host, "smtp.gmail.com");
+      assert.equal(options.host, "smtppro.zoho.com");
       assert.equal(options.port, 465);
       assert.equal(options.secure, true);
+      assert.equal(options.requireTLS, true);
       assert.deepEqual(options.auth, {
-        user: "sender@gmail.com",
-        pass: "abcdefghijklmnop",
+        user: "sender@example.com",
+        pass: "unit-test pass with spaces",
       });
       return transport;
     },
@@ -282,8 +285,8 @@ test("Gmail transport uses TLS and app-password auth and requires recipient acce
           typeof message.from !== "string" &&
           !Array.isArray(message.from),
       );
-      assert.equal(message.from.address, "sender@gmail.com");
-      assert.equal(message.messageId, "<reserved-id@gmail.com>");
+      assert.equal(message.from.address, "sender@example.com");
+      assert.equal(message.messageId, "<reserved-id@example.com>");
       assert.equal(message.subject, "Safe subject");
       return { accepted: ["member@example.com"], messageId: "accepted-id" };
     },
@@ -298,25 +301,25 @@ test("Gmail transport uses TLS and app-password auth and requires recipient acce
       text: "Deadline approaching",
       id: "reserved-id",
     };
-    assert.equal(await sendGmail(message), "accepted-id");
+    assert.equal(await sendMail(message), "accepted-id");
     send.mock.mockImplementation(async () => ({
       accepted: [],
       messageId: "rejected-id",
     }));
     await assert.rejects(
-      sendGmail(message),
+      sendMail(message),
       (e) => e instanceof AppError && e.status === 503,
     );
     send.mock.mockImplementation(async () => {
       throw new Error("private SMTP credential details");
     });
     await assert.rejects(
-      sendGmail(message),
+      sendMail(message),
       (e) => e instanceof AppError && !e.message.includes("private SMTP"),
     );
     assert.equal(closed, 3);
-    delete process.env.GMAIL_APP_PASSWORD;
-    assert.throws(gmailConfiguration, AppError);
+    delete process.env.ZOHO_PASSWORD;
+    assert.throws(mailConfiguration, AppError);
   } finally {
     intercepted.mock.restore();
     mock.restoreAll();

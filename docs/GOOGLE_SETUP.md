@@ -171,28 +171,26 @@ Paste only that output line, not the command. This requires no local file creati
 
 The app automatically creates six clean tabs: **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries**. They start empty except for actual Google signups and the reporting schedule. Old tracker tabs, names, projects and reports are never imported or displayed. Use a new blank spreadsheet from Step 2 if desired; an already connected workbook can also host these separate fresh tabs without changing its old data. There is no initialization or reset button to click.
 
-<a id="gmail-reminders"></a>
+<a id="email-reminders"></a>
 
-## Step 8 — Email: use Gmail, no domain needed
+## Step 8 — Email: reuse InternUp's Zoho SMTP
 
-**Email is optional. You can deploy and test Google login, projects and reports before enabling it.**
+**No Gmail password or new domain is needed. Email is optional; it does not block deployment or Google login.**
 
-1. Open [Google App passwords](https://myaccount.google.com/apppasswords) while signed into **harsimran1869@gmail.com**. If asked, enable **2-Step Verification**. Create an app password named **VE Lab Tracker**.
-2. In the prepared private **`.env.email.local`** file, paste that password after **`GMAIL_APP_PASSWORD=`**. The sender and a random scheduler secret are already filled in. Do not paste the password in chat.
-3. Open **Vercel → your project → Settings → Environment Variables → Import .env**. Import/paste that file's contents, select **Production**, save, then **redeploy**.
-4. In the app, open **Account & settings → Send me a test email**. Check your Gmail inbox/spam.
-
-If entering the fields directly instead of importing:
+1. Use the same **SMTP host and port** as InternUp. Zoho accounts may use `.com`, `.in` or another regional server; copy the actual host instead of guessing.
+2. The private **`.env.email.local`** file in this cloud workspace contains the sender, password and generated scheduler secret. Confirm its `SMTP_HOST` matches InternUp.
+3. In **Vercel → Settings → Environment Variables → Import .env**, import that file for **Production**, save and **redeploy**.
+4. In the app: **Account & settings → Send me a test email**. Check your inbox/spam.
 
 | Vercel variable | Value |
 | --- | --- |
-| `GMAIL_USER` | `harsimran1869@gmail.com` |
-| `GMAIL_APP_PASSWORD` | The app password from step 1 |
-| `CRON_SECRET` | The generated value from your private file |
+| `ZOHO_EMAIL` | `contact@internup.org` |
+| `ZOHO_PASSWORD` | The existing mailbox's SMTP credential; private only |
+| `SMTP_HOST` | The exact SMTP host used by InternUp |
+| `SMTP_PORT` | InternUp's SMTP port: 465 (TLS) or 587 (required STARTTLS) |
+| `CRON_SECRET` | Already generated in the private file |
 
-The private file is prepared in this cloud workspace and excluded from Git. Existing Google login and Sheet variables remain unchanged in Vercel. Cloud settings and Vercel settings are separate; a local file does not update Vercel automatically.
-
-If Google does not offer App passwords, check [account eligibility](https://support.google.com/accounts/answer/185833) before choosing another Gmail sender. Use an app password, never your ordinary Google password.
+The private file is excluded from Git. Cloud and Vercel settings are separate; a local file does not update Vercel automatically. If Zoho requires an application-specific password or disables SMTP for this account, its account owner must update that credential or enable SMTP. Never send passwords in chat or commit them to Git.
 
 <details>
 <summary>Reminder timing and delivery troubleshooting</summary>
@@ -204,11 +202,11 @@ Email policy:
 - **Weekly manager summary:** one after the cutoff, listing reporting gaps and unresolved help requests. With daily scheduling, this arrives on the first scheduled run after the deadline.
 - **Completed projects** stop report expectations and reminders. Members who join after the weekly cutoff start being counted next week. Account preferences can disable emails.
 
-Gmail sending limits apply; this is intended for the small team. Daily cron is suitable for these reminder windows; it does not promise delivery at the exact reporting cutoff time.
+Zoho sending limits apply; this is intended for the small team. Daily cron is suitable for these reminder windows; it does not promise delivery at the exact reporting cutoff time.
 
-**If a send is uncertain:** Gmail SMTP cannot guarantee duplicate suppression. The app reserves a Sheet row before sending and holds unconfirmed rows instead of resending automatically. An admin should check the sender’s Gmail mail history and the recipient before resolving the row. If accepted, fill `sentAt` and `providerId` (the message ID); delete only that specific pending row if you have confirmed it was not accepted and want another attempt. Never delete the whole tab or reinitialize the Sheet. Concurrent scheduler runs should be avoided because Sheets has no transaction lock.
+**If a send is uncertain:** SMTP cannot guarantee duplicate suppression. The app reserves a Sheet row before sending and holds unconfirmed rows instead of resending automatically. An admin should check the sender’s mail history and the recipient before resolving the row. If accepted, fill `sentAt` and `providerId` (the message ID); delete only that specific pending row if you have confirmed it was not accepted and want another attempt. Never delete the whole tab or reinitialize the Sheet. Concurrent scheduler runs should be avoided because Sheets has no transaction lock.
 
-Old `RESEND_API_KEY`, `EMAIL_FROM` and `LAB_TIMEZONE` settings are unused. Automated tests mock Gmail; real delivery and Vercel scheduling require the configuration above.
+Old `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `RESEND_API_KEY`, `EMAIL_FROM` and `LAB_TIMEZONE` settings are unused. Automated tests mock SMTP; real delivery and Vercel scheduling require the configuration above.
 
 </details>
 
@@ -231,8 +229,10 @@ GOOGLE_CLIENT_ID=123456789000-fictional-client.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-FICTIONAL-NOT-A-REAL-SECRET
 NEXTAUTH_SECRET=FICTIONAL_SESSION_SECRET_REPLACE_WITH_GENERATED_VALUE
 
-GMAIL_USER=fictional-sender@gmail.com
-GMAIL_APP_PASSWORD=FICTIONAL_APP_PASSWORD_NOT_VALID
+ZOHO_EMAIL=fictional-sender@example.com
+ZOHO_PASSWORD=FICTIONAL_ZOHO_PASSWORD_NOT_VALID
+SMTP_HOST=smtppro.zoho.com
+SMTP_PORT=465
 CRON_SECRET=FICTIONAL_CRON_SECRET_REPLACE_WITH_64_RANDOM_HEX_CHARACTERS
 ```
 
@@ -248,4 +248,4 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | Spreadsheet not found                | Step 2: copy only the ID; Step 4: check sharing                                                             |
 | Invalid private key                  | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines                        |
 | Existing app Sheet / changed headers | Restore the six Lab tab headers from `lib/sheets.ts`; never overwrite existing records                      |
-| Deadline emails not arriving         | Step 8: Gmail address + app password + cron secret, redeploy, test email, then Cron Jobs                    |
+| Deadline emails not arriving         | Step 8: Zoho SMTP host + sender + password + cron secret, redeploy, test email, then Cron Jobs                    |
