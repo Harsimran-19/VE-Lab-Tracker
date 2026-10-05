@@ -1,6 +1,24 @@
 "use client";
+import Image from "next/image";
+import localFont from "next/font/local";
 import { signIn } from "next-auth/react";
-import { ArrowUpRight, FlaskConical, Check, AlertCircle } from "lucide-react";
+import { useState } from "react";
+
+const displayFont = localFont({
+  src: "../app/fonts/source-serif-400.ttf",
+  weight: "400",
+  display: "swap",
+  variable: "--login-display-font",
+});
+const bodyFont = localFont({
+  src: [
+    { path: "../app/fonts/plex-sans-400.ttf", weight: "400" },
+    { path: "../app/fonts/plex-sans-500.ttf", weight: "500" },
+  ],
+  display: "swap",
+  variable: "--login-body-font",
+});
+
 export function Login({
   missing,
   error,
@@ -10,70 +28,55 @@ export function Login({
   error?: string;
   callbackUrl?: string;
 }) {
+  const [openingGoogle, setOpeningGoogle] = useState(false);
+  const [signInError, setSignInError] = useState(false);
+
+  async function openGoogle() {
+    if (openingGoogle) return;
+    setOpeningGoogle(true);
+    setSignInError(false);
+    try {
+      await signIn("google", { callbackUrl });
+    } catch {
+      setOpeningGoogle(false);
+      setSignInError(true);
+    }
+  }
+
   return (
-    <main className="login-page">
-      <section className="login-story">
-        <a className="brand" href="/">
-          <span className="brand-icon">
-            <FlaskConical size={22} />
-          </span>
-          <span>
-            VE <strong>Lab</strong>
-          </span>
-        </a>
-        <div>
-          <p className="eyebrow">VENTURE ENGINEERING LAB</p>
-          <h1>
-            More research.
-            <br />
-            Less reporting.
-          </h1>
-          <p className="login-description">
-            A shared home for your projects, people, and the small steps that
-            move big ideas forward.
-          </p>
-          <div className="login-points">
-            <p>
-              <Check size={18} /> Know what needs your attention
-            </p>
-            <p>
-              <Check size={18} /> Share progress in a few minutes
-            </p>
-            <p>
-              <Check size={18} /> Keep the whole lab connected
-            </p>
-          </div>
-        </div>
-        <p className="login-footer">Ideas become progress, together.</p>
+    <main className={`login-page ${displayFont.variable} ${bodyFont.variable}`}>
+      <section className="login-artwork" aria-labelledby="lab-name">
+        <Image
+          src="/images/sign-in-artwork-original.png"
+          alt=""
+          fill
+          sizes="(max-width: 1000px) 100vw, 61.2vw"
+          preload
+          unoptimized
+          className="login-artwork-image"
+        />
+        <h1 id="lab-name"><span className="login-name-first"><span>Venture</span>{" "}<span>Engineering</span></span><span className="login-name-last">Lab Tracker</span></h1>
       </section>
-      <section className="login-form">
-        <div className="login-card">
-          <span className="small-mark">
-            <FlaskConical size={28} />
-          </span>
-          <p className="eyebrow">YOUR RESEARCH WORKSPACE</p>
-          <h2>Welcome to the lab.</h2>
-          <p>Sign in with Google to join the lab and add your work.</p>
+      <section className="login-form" aria-labelledby="sign-in-heading">
+        <div className="login-content">
+          <h2 id="sign-in-heading">Welcome to the lab</h2>
+          <p className="login-description">Sign in to open your research workspace.</p>
           {missing.length ? (
-            <div className="setup-notice">
-              <AlertCircle size={20} />
-              <div>
-                <strong>Google setup is still needed</strong>
-                <p>Your administrator needs to configure:</p>
-                <ul>
-                  {missing.map((k) => (
-                    <li key={k}>
-                      <code>{k}</code>
-                    </li>
-                  ))}
-                </ul>
-                <p>Follow the setup guide included with the project.</p>
-              </div>
+            <div className="setup-notice" role="status">
+              <strong>Google setup is still needed</strong>
+              <p>Your administrator needs to finish setup before you can sign in.</p>
+              <details>
+                <summary>Administrator setup</summary>
+                <ul>{missing.map((key) => <li key={key}><code>{key}</code></li>)}</ul>
+              </details>
             </div>
           ) : (
             <button
+              type="button"
               className="google-button"
-              onClick={() => signIn("google", { callbackUrl })}
+              onClick={openGoogle}
+              disabled={openingGoogle}
+              aria-busy={openingGoogle}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -97,21 +100,18 @@ export function Login({
                   fill="#EA4335"
                   d="M12 5.97c1.47 0 2.79.5 3.82 1.5l2.86-2.86A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.96 5.53l3.34 2.59C7.17 7.74 9.39 5.97 12 5.97Z"
                 />
-              </svg>{" "}
-              Continue with Google <ArrowUpRight size={17} />
+              </svg>
+              <span>{openingGoogle ? "Opening Google…" : "Continue with Google"}</span>
             </button>
           )}
-          {error && (
-            <p className="error" role="alert">
+          {(error || signInError) && (
+            <p className="login-error" role="alert">
               {error === "AccessDenied"
                 ? "Google sign-in or account creation could not be completed. Check Google access and try again."
-                : "Sign-in could not be completed. Please try again or ask the administrator to check Google setup."}
+                : "Sign-in could not be completed. Please try again or ask your administrator for help."}
             </p>
           )}
-          <p className="login-note">
-            Your account is created automatically. No invitation or admin
-            approval needed.
-          </p>
+          <p className="login-note">First time here? Signing in creates your account.</p>
         </div>
       </section>
     </main>
