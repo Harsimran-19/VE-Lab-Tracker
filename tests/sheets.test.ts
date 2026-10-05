@@ -365,3 +365,42 @@ test("shared read includes profiles and server-side reminder records from upgrad
   assert.equal(store.reminders![0].providerId, "provider-1");
   assert.equal(store.projects.length, 15);
 });
+
+test("edits to duplicate signup and join rows retain the latest name, role and work status", async () => {
+  const ranges = valueRanges();
+  ranges.valueRanges[1].values.push(
+    ["google-stable", "Original name", "duplicate@example.com", "", "member"],
+    ["google-stable", "Updated name", "duplicate@example.com", "Lab", "admin"],
+  );
+  ranges.valueRanges[2].values.push(
+    ["join-stable", "P10", "google-stable", "Project work", "In progress", ""],
+    ["join-stable", "P10", "google-stable", "Project work", "Done", ""],
+  );
+  globalThis.fetch = async (input) =>
+    response(String(input).includes("values:batchGet") ? ranges : metadata());
+  const store = await readSheet();
+  assert.equal(
+    store.people.find((p) => p.id === "google-stable")!.name,
+    "Updated name",
+  );
+  assert.equal(
+    store.people.find((p) => p.id === "google-stable")!.role,
+    "admin",
+  );
+  assert.equal(
+    store.assignments.find((a) => a.id === "join-stable")!.status,
+    "Done",
+  );
+  ranges.valueRanges[2].values.push([
+    "join-stable",
+    "P10",
+    "different-person",
+    "Project work",
+    "Done",
+    "",
+  ]);
+  await assert.rejects(
+    readSheet(),
+    (e: unknown) => e instanceof AppError && e.status === 409,
+  );
+});

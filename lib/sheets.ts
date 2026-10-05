@@ -196,18 +196,16 @@ export async function readSheet(): Promise<Store> {
   // logical person for a stable Google ID; never merge different identities.
   store.people = store.people.filter((person, index, people) => {
     const first = people.findIndex((p) => p.id === person.id);
-    if (first === index) return true;
     const original = people[first];
     if (
-      original.email.trim().toLowerCase() !==
-        person.email.trim().toLowerCase() ||
-      original.role !== person.role
+      original.email.trim().toLowerCase() !== person.email.trim().toLowerCase()
     )
       throw new AppError(
         "Conflicting person records in the People tab. Correct the duplicate before continuing.",
         409,
       );
-    return false;
+    // Edits resolve the last row by ID, so use that row's name/access role.
+    return people.findLastIndex((p) => p.id === person.id) === index;
   });
   if (store.people.some((p) => !["admin", "member"].includes(p.role)))
     throw new AppError("People.role must be admin or member.", 409);
@@ -223,9 +221,15 @@ export async function readSheet(): Promise<Store> {
   store.profiles = store.profiles!.filter(
     (p, i, rows) => rows.findLastIndex((r) => r.id === p.id) === i,
   );
-  store.assignments = store.assignments.filter(
-    (a, i, rows) => rows.findIndex((r) => r.id === a.id) === i,
-  );
+  store.assignments = store.assignments.filter((a, i, rows) => {
+    const original = rows.find((r) => r.id === a.id)!;
+    if (original.personId !== a.personId || original.projectId !== a.projectId)
+      throw new AppError(
+        "Conflicting responsibility identities in the Assignments tab.",
+        409,
+      );
+    return rows.findLastIndex((r) => r.id === a.id) === i;
+  });
   store.reminders = store.reminders!.filter(
     (r, i, rows) => rows.findLastIndex((row) => row.id === r.id) === i,
   );
