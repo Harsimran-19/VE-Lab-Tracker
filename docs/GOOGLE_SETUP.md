@@ -173,58 +173,29 @@ The app automatically creates six clean tabs: **LabProjects, LabMembers, LabMemb
 
 <a id="gmail-reminders"></a>
 
-## Step 8 — Free Gmail reminders (no purchased domain)
+## Step 8 — Email: use Gmail, no domain needed
 
-Use an existing Gmail account as the sender. Google Sheets stores every record; Vercel checks deadlines daily. Keep using your free `.vercel.app` website URL.
+**Email is optional. You can deploy and test Google login, projects and reports before enabling it.**
 
-### 8A. Copy your Gmail sender address
+1. Open [Google App passwords](https://myaccount.google.com/apppasswords) while signed into **harsimran1869@gmail.com**. If asked, enable **2-Step Verification**. Create an app password named **VE Lab Tracker**.
+2. In the prepared private **`.env.email.local`** file, paste that password after **`GMAIL_APP_PASSWORD=`**. The sender and a random scheduler secret are already filled in. Do not paste the password in chat.
+3. Open **Vercel → your project → Settings → Environment Variables → Import .env**. Import/paste that file's contents, select **Production**, save, then **redeploy**.
+4. In the app, open **Account & settings → Send me a test email**. Check your Gmail inbox/spam.
 
-1. Choose the Gmail account to send lab reminders from. For testing, you can use `harsimran1869@gmail.com`.
-2. Open **Vercel → your project → Settings → Environment Variables → Production**.
-3. Create this variable:
+If entering the fields directly instead of importing:
 
-| Copy                                 | Paste into variable | Example                   |
-| ------------------------------------ | ------------------- | ------------------------- |
-| The complete Gmail address you chose | `GMAIL_USER`        | `harsimran1869@gmail.com` |
+| Vercel variable | Value |
+| --- | --- |
+| `GMAIL_USER` | `harsimran1869@gmail.com` |
+| `GMAIL_APP_PASSWORD` | The app password from step 1 |
+| `CRON_SECRET` | The generated value from your private file |
 
-### 8B. Create and copy a Google app password
+The private file is prepared in this cloud workspace and excluded from Git. Existing Google login and Sheet variables remain unchanged in Vercel. Cloud settings and Vercel settings are separate; a local file does not update Vercel automatically.
 
-1. Sign in to the **same Gmail account** from 8A.
-2. Open [Google Account Security](https://myaccount.google.com/security).
-3. Open **2-Step Verification** and turn it on if it is not already enabled.
-4. Open [App passwords](https://myaccount.google.com/apppasswords).
-5. Enter **VE Lab Tracker** as the app name and click **Create**.
-6. Google shows a **16-character app password**. Copy it now.
-7. Back in **Vercel → Settings → Environment Variables → Production**, create:
+If Google does not offer App passwords, check [account eligibility](https://support.google.com/accounts/answer/185833) before choosing another Gmail sender. Use an app password, never your ordinary Google password.
 
-| Copy                                                | Paste into variable  | Example (fictional) |
-| --------------------------------------------------- | -------------------- | ------------------- |
-| The 16-character app password Google just generated | `GMAIL_APP_PASSWORD` | `abcdefghijklmnop`  |
-
-Paste only the app password, without quotes. Spaces are accepted. **Do not paste your regular Google login password.** Keep this value in private environment settings, never chat or GitHub. App passwords may be unavailable for accounts restricted by their organization or Advanced Protection; in that case, choose an eligible Gmail account.
-
-### 8C. Copy a scheduler secret
-
-1. Open Google Cloud Shell.
-2. Run `openssl rand -hex 32`.
-3. Copy the single output line.
-4. In the same Vercel environment settings, create:
-
-| Copy                       | Paste into variable |
-| -------------------------- | ------------------- |
-| The new random output line | `CRON_SECRET`       |
-
-Keep it separate from `NEXTAUTH_SECRET`. Vercel automatically includes this secret when invoking the daily scheduler.
-
-### 8D. Set the timezone, redeploy and test
-
-1. Under **Account & settings**, choose the weekly reporting day, time and lab timezone. No timezone ENV variable is needed.
-2. Save the variables and **redeploy** in Vercel.
-3. Sign in as the admin, open **Account & settings → Lab email reminders**, and click **Send me a test email**.
-4. Check your Google inbox and spam folder. The app confirms Gmail acceptance, which does not by itself prove inbox delivery. Sample mode only previews the message.
-5. For a real deadline test, join a project yourself. Inside the project, click **Set milestone** and choose tomorrow as the due date. Keep **Account → Email me relevant reminders** checked.
-6. In Vercel → **Cron Jobs**, confirm `/api/cron/reminders` appears. Use its **Run** control, if available, or wait for the next daily run. The schedule is **04:00 UTC** (09:30 India / 12:00 Hong Kong); Hobby execution can occur within that hour.
-7. Confirm the deadline email arrives and a `LabDeliveries` row has `sentAt` filled in your Sheet.
+<details>
+<summary>Reminder timing and delivery troubleshooting</summary>
 
 Email policy:
 
@@ -238,6 +209,8 @@ Gmail sending limits apply; this is intended for the small team. Daily cron is s
 **If a send is uncertain:** Gmail SMTP cannot guarantee duplicate suppression. The app reserves a Sheet row before sending and holds unconfirmed rows instead of resending automatically. An admin should check the sender’s Gmail mail history and the recipient before resolving the row. If accepted, fill `sentAt` and `providerId` (the message ID); delete only that specific pending row if you have confirmed it was not accepted and want another attempt. Never delete the whole tab or reinitialize the Sheet. Concurrent scheduler runs should be avoided because Sheets has no transaction lock.
 
 Old `RESEND_API_KEY`, `EMAIL_FROM` and `LAB_TIMEZONE` settings are unused. Automated tests mock Gmail; real delivery and Vercel scheduling require the configuration above.
+
+</details>
 
 ## Complete fictional ENV example
 
