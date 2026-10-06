@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, FlaskConical } from "lucide-react";
+import { ArrowRightIcon as ArrowRight, CheckIcon as Check } from "@phosphor-icons/react";
+import { signOut } from "next-auth/react";
+import { workspaceFontClasses } from "./workspace-chrome";
 import type { Workspace } from "@/lib/types";
 import { mutate } from "./forms";
 export function Welcome({
@@ -12,6 +14,7 @@ export function Welcome({
 }) {
   const heading = useRef<HTMLHeadingElement>(null),
     [step, setStep] = useState(1),
+    [search, setSearch] = useState(""),
     [name, setName] = useState(data.identity.name),
     [projects, setProjects] = useState<string[]>(
       data.memberships
@@ -30,6 +33,15 @@ export function Welcome({
   useEffect(() => {
     heading.current?.focus();
   }, [step]);
+  async function finishSetup(projectIds: string[]) {
+    setBusy(true);
+    setError("");
+    try {
+      await mutate("/api/onboarding", { name, projectIds });
+      await saved();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (step === 1) {
@@ -41,34 +53,13 @@ export function Welcome({
       setStep(2);
       return;
     }
-    setBusy(true);
-    setError("");
-    try {
-      await mutate("/api/onboarding", { name, projectIds: projects });
-      await saved();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    await finishSetup(projects);
   }
   return (
-    <main className="welcome-page">
-      <div className="welcome-brand">
-        <FlaskConical size={24} />
-        <strong>VE Lab</strong>
-        <span>Venture Engineering Lab</span>
-      </div>
+    <main className={`welcome-page ${workspaceFontClasses}`}>
+      <header className="welcome-brand"><span>Venture Engineering Lab Tracker</span>{!data.demo && <button className="text-action" onClick={() => signOut({callbackUrl:"/"})}>Sign out</button>}</header>
       <section className="welcome-card">
-        <div
-          className="welcome-progress"
-          aria-label={`Setup step ${step} of 2`}
-        >
-          <span className={step === 1 ? "current" : "complete"}>
-            {step === 1 ? 1 : <Check size={14} />} Your name
-          </span>
-          <span className={step === 2 ? "current" : ""}>2 Your projects</span>
-        </div>
+        <p className="welcome-progress" aria-label={`Setup step ${step} of 2`}>Step {step} of 2</p>
         <h1 ref={heading} tabIndex={-1}>
           {step === 1 ? "What should we call you?" : "Choose your projects"}
         </h1>
@@ -76,7 +67,7 @@ export function Welcome({
           {step === 1
             ? "Confirm the name your teammates will see. You can change it later."
             : available.length
-              ? "Select only the projects you work on. These will appear on My work."
+              ? "Join the projects you work on. You can change this later."
               : "The manager hasn’t created any projects yet. You can finish setup and join when they’re ready."}
         </p>
         <form onSubmit={submit}>
@@ -99,8 +90,8 @@ export function Welcome({
             ) : (
               <>
                 {available.length > 0 && (
-                  <div className="project-checklist">
-                    {available.map((p) => (
+                  <><div className="search-field"><input aria-label="Search projects" placeholder="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="project-checklist">
+                    {available.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())).map((p) => (
                       <label
                         key={p.id}
                         className={projects.includes(p.id) ? "selected" : ""}
@@ -119,17 +110,15 @@ export function Welcome({
                         />
                         <span>
                           <strong>{p.name}</strong>
-                          <small>{p.goal}</small>
+                          <small className="home-phase">{p.phase}</small>
                         </span>
                       </label>
                     ))}
-                  </div>
+                  </div>{!available.some((p) => p.name.toLowerCase().includes(search.toLowerCase())) && <p className="quiet-empty">No matching projects.</p>}</>
                 )}
                 {available.length > 0 && (
                   <p className="field-help">
-                    Joining lets you report your own progress and receive
-                    relevant reminders. Your team can read shared project
-                    updates.
+                    {projects.length} {projects.length === 1 ? "project" : "projects"} selected
                   </p>
                 )}
               </>
@@ -157,12 +146,13 @@ export function Welcome({
                 : step === 1
                   ? "Continue"
                   : projects.length
-                    ? "Open my work"
+                    ? "Open workspace"
                     : available.length
-                      ? "Choose projects later"
+                      ? "Open workspace"
                       : "Finish setup"}
               <ArrowRight size={16} />
             </button>
+            {step === 2 && available.length > 0 && <button type="button" className="text-action" disabled={busy} onClick={() => { void finishSetup([]); }}>Skip for now</button>}
           </div>
         </form>
       </section>

@@ -36,3 +36,29 @@ Production build and TypeScript pass. Browser console has no errors. Existing 48
 ## Follow-up polish
 
 Minor font-shape differences from image-generated lettering remain; the implementation uses the explicit design.md font family. No remaining P0/P1/P2 findings in the compared states. Acceptance of the rendered page remains with the user.
+
+## Remaining workspace pages — October 6, 2026
+
+Implemented Projects, project Overview/Updates/Resources/People, Team, member pages, Account, manager reporting settings, onboarding, and the existing project, responsibility and weekly-update editors. These use the selected image direction and design.md fonts/palette. User-requested adjustments are intentional: 38px desktop headings, 31px mobile headings, 14–15px UI text, dark project names and person outline icons. Product branding is Venture Engineering Lab Tracker; no product monogram or sharing control is present. A Phosphor clipboard browser icon was added.
+
+### Comparison evidence
+
+Desktop captures use a 1487 × 1058 CSS viewport. Source-left/implementation-right pairs are saved under `/private/tmp/ve-rest-qa/`: `projects-comparison.png`, `project-comparison.png`, `team-comparison.png`, `account-comparison.png`, `onboarding-comparison.png`. Sources are the previously selected generated images: Projects `exec-c6e17aa1-67f0-41ac-96e5-fa0e0aef1fca.png`; workspace `exec-b4d28053-4fb6-4b05-830f-f6a8b693b831.png`; Team `exec-dd49d994-a23d-49dc-859c-b4fab048075f.png`; Account `exec-2f6527b8-2336-4e9b-82c5-5cf790634938.png`; onboarding `exec-49216e82-089c-4a19-a7d5-64748f5fb849.png`. Source images are normalized to the capture dimensions for comparison, not served as page backgrounds.
+
+The structure, fonts, palette, navigation, table hierarchy, form hierarchy and project sections were inspected together with their references. Demo values differ from reference examples. The local-preview banner is development-only. Sign out is hidden in the demo, available with real authentication. Project and responsibility editors remain accessible native dialogs rather than introducing separate editor routes. Existing statuses remain Not started/In progress/Blocked/Done. Publication fields are expandable; required and important project fields are visible immediately.
+
+### Findings repaired
+
+- Removed legacy account navigation, card grids, initial avatars and uppercase brand labels from remaining screens.
+- Kept project names dark and separated project content into four functional tabs.
+- Repaired onboarding header width and inherited alignment/colour styles.
+- Paired milestone/date fields and aligned optional field labels.
+- Replaced a mobile phase strip that hid the current phase with a two-row phase layout.
+- Added mode-specific resource/publication/collaborator empty states.
+- Matched Account's separate Profile and Reminders sections with an accessible reminder switch.
+
+### Verification
+
+Production build, TypeScript and all 48 existing unit tests pass. Local browser checks verified project creation with phase, weekly update submission and display in Updates, profile saving, onboarding selection/completion, resource and collaborator tabs, member navigation, and manager settings. Console error log was empty. Mobile screenshots at 390 × 844 are `mobile-projects.png`, `mobile-project.png`, `mobile-form.png`, `mobile-account.png`, `mobile-team.png`; document width is 390px for checked Projects, Account and Team states. Dialogs retain sticky actions and scrollable content. No live sheet data was modified and no real reminder email sent. Real Google OAuth and production delivery were not exercised. The old Playwright CLI suite was not run; interaction checks used the local browser demo.
+
+No unresolved blocking layout issue in the inspected states. Smaller typography and dynamic data are intentional departures from generated mockups. User acceptance remains pending; this report does not label the implementation approved.

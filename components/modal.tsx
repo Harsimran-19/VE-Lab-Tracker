@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { XIcon as X } from "@phosphor-icons/react";
 export function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();

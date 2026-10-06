@@ -15,7 +15,7 @@ function ConnectionError({ error }: { error: unknown }) {
   return (
     <main className="service-error">
       <div>
-        <p className="eyebrow">VE LAB</p>
+        <p className="service-brand">Venture Engineering Lab Tracker</p>
         <h1>Let’s reconnect your workspace.</h1>
         <p>
           {error instanceof AppError

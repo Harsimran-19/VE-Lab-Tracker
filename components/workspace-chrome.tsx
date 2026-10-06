@@ -20,6 +20,7 @@ const bodyFont = localFont({
   display: "swap",
   variable: "--workspace-body-font",
 });
+export const workspaceFontClasses = `${displayFont.variable} ${bodyFont.variable}`;
 
 export function WorkspaceChrome({ screen, children }: { screen: Screen; children: ReactNode }) {
   const navigation = [

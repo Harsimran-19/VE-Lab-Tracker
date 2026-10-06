@@ -1,6 +1,6 @@
 "use client";
 import { useId, useState } from "react";
-import { CircleHelp } from "lucide-react";
+import { QuestionIcon as CircleHelp } from "@phosphor-icons/react";
 export function HelpTip({
   label,
   children,

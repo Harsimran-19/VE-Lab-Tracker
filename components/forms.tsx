@@ -113,7 +113,7 @@ export function ProjectForm({
           {configuring && (
             <p className="section-copy">
               {action === "create"
-                ? "Give your team a clear starting point. Only the name and goal are required; you can change everything later."
+                ? "Set the direction now. Only the name and goal are required."
                 : "Keep the project’s direction, ownership and next deadline together."}
             </p>
           )}
@@ -129,7 +129,7 @@ export function ProjectForm({
                 />
               </label>
               <label>
-                Goal
+                Research goal
                 <textarea
                   aria-label="Goal"
                   required
@@ -144,68 +144,16 @@ export function ProjectForm({
           )}
           {configuring && (
             <>
-              <section
-                className="setup-section"
-                aria-label="Research and ownership"
-              >
-                <h3>Research & ownership</h3>
+              <section className="setup-section" aria-label="Research and ownership">
                 <div className="form-grid">
-                  <label>
-                    Project lead
-                    <select
-                      aria-label="Project lead"
-                      value={setup.leadId}
-                      onChange={(e) => updateSetup("leadId", e.target.value)}
-                    >
-                      <option value="">Choose later</option>
-                      {people.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Priority
-                    <select
-                      aria-label="Priority"
-                      value={setup.priority}
-                      onChange={(e) => updateSetup("priority", e.target.value)}
-                    >
-                      <option value="">Choose later</option>
-                      {PRIORITIES.map((value) => (
-                        <option key={value}>{value}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <label>Research phase<select aria-label="Current phase" value={phase} onChange={(e) => setPhase(e.target.value)}>{STAGES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  <label>Project lead<select aria-label="Project lead" value={setup.leadId} onChange={(e) => updateSetup("leadId",e.target.value)}><option value="">Choose later</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
                 </div>
-                <label>
-                  Current phase
-                  <select
-                    aria-label="Current phase"
-                    value={phase}
-                    onChange={(e) => setPhase(e.target.value)}
-                  >
-                    {STAGES.map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Research methods{" "}
-                  <span className="optional-label">Optional</span>
-                  <input
-                    aria-label="Research methods"
-                    maxLength={2000}
-                    placeholder="e.g. Interviews, survey, experiment"
-                    value={setup.methods}
-                    onChange={(e) => updateSetup("methods", e.target.value)}
-                  />
-                </label>
-                <p className="field-help">
-                  Push: focus now · Steady: ongoing work · Background: lower
-                  urgency.
-                </p>
+                <div className="form-grid">
+                  <label>Priority<select aria-label="Priority" value={setup.priority} onChange={(e) => updateSetup("priority",e.target.value)}><option value="">Choose later</option>{PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  <label><span>Research methods <span className="optional-label">Optional</span></span><input aria-label="Research methods" maxLength={2000} placeholder="e.g. Interviews, survey, experiment" value={setup.methods} onChange={(e) => updateSetup("methods",e.target.value)} /></label>
+                </div>
+                <p className="field-help">Push: focus now · Steady: ongoing work · Background: lower urgency.</p>
               </section>
               <section className="setup-section" aria-label="Next milestone">
                 <h3>
@@ -216,6 +164,7 @@ export function ProjectForm({
                   Set the next concrete step and its deadline when you know
                   them.
                 </p>
+                <div className="form-grid">
                 <label>
                   Milestone
                   <input
@@ -237,6 +186,7 @@ export function ProjectForm({
                     onChange={(e) => setDue(e.target.value)}
                   />
                 </label>
+                </div>
               </section>
               <details
                 className="form-disclosure"
@@ -252,7 +202,7 @@ export function ProjectForm({
                 }
               >
                 <summary>
-                  Research title & publication{" "}
+                  Publication details{" "}
                   <span className="optional-label">Optional</span>
                 </summary>
                 <div className="entry-fields">

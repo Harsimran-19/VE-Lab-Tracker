@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRightIcon as ArrowUpRight, PlusIcon as Plus } from "@phosphor-icons/react";
 import {
   PRIORITIES,
   PUBLICATION_STATUSES,
@@ -27,7 +27,7 @@ export function ProjectContext({
   data,
   saved,
   mode,
-}: Props & { mode: "details" | "responsibilities" }) {
+}: Props & { mode: "details" | "responsibilities" | "resources" | "publication" | "people" }) {
   const manager = data.identity.role === "admin";
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false),
@@ -69,7 +69,7 @@ export function ProjectContext({
           {notice}
         </p>
       )}
-      {mode === "details" && (hasDetails || manager) && (
+      {(mode === "details" || mode === "resources") && (hasDetails || manager) && (
         <details open className="panel context-disclosure">
           <summary>
             <span>Research details</span>
@@ -258,13 +258,13 @@ export function ProjectContext({
           )}
         </section>
       )}
-      {mode === "details" &&
+      {(mode === "details" || mode === "publication") &&
         (project.publicationStatus ||
           project.targetJournal ||
           project.altJournal ||
           project.targetConference ||
           manager) && (
-          <details className="panel context-disclosure">
+          <details open={mode === "publication" || undefined} className="panel context-disclosure publication-context">
             <summary>
               <span>Publication</span>
               <small>
@@ -311,8 +311,8 @@ export function ProjectContext({
             </div>
           </details>
         )}
-      {mode === "details" && (collaborators.length > 0 || manager) && (
-        <details className="panel context-disclosure">
+      {(mode === "details" || mode === "people") && (collaborators.length > 0 || manager) && (
+        <details open={mode === "people" || undefined} className="panel context-disclosure">
           <summary>
             <span>Collaborators</span>
             <small>
@@ -369,21 +369,12 @@ export function ProjectContext({
           </div>
         </details>
       )}
-      {mode === "details" &&
-        !manager &&
-        !hasDetails &&
-        !project.publicationStatus &&
-        !project.targetJournal &&
-        !project.altJournal &&
-        !project.targetConference &&
-        !collaborators.length && (
-          <div className="panel empty-state">
-            <h2>No additional details yet</h2>
-            <p>
-              Your manager can add research context and a publication plan here.
-            </p>
-          </div>
-        )}
+      {!manager && (
+        (mode === "resources" && !hasDetails) ||
+        (mode === "people" && !collaborators.length) ||
+        (mode === "publication" && !project.publicationStatus && !project.targetJournal && !project.altJournal && !project.targetConference) ||
+        (mode === "details" && !hasDetails && !project.publicationStatus && !project.targetJournal && !project.altJournal && !project.targetConference && !collaborators.length)
+      ) && <div className="panel empty-state"><h2>{mode === "resources" ? "No resources added yet" : mode === "people" ? "No external collaborators yet" : mode === "publication" ? "No publication plan yet" : "No additional details yet"}</h2><p>Your manager can add these details when they are needed.</p></div>}
       {editor && (
         <ContextEditor
           project={project}
@@ -788,7 +779,7 @@ function ContextEditor({
                     </select>
                   </label>
                   <label>
-                    Due date <span className="optional-label">Optional</span>
+          <span>Due date <span className="optional-label">Optional</span></span>
                     <input
                       type="date"
                       value={stream.due}
@@ -799,7 +790,7 @@ function ContextEditor({
                   </label>
                 </div>
                 <label>
-                  Notes <span className="optional-label">Optional</span>
+          <span>Notes <span className="optional-label">Optional</span></span>
                   <textarea
                     rows={2}
                     maxLength={2000}

@@ -38,7 +38,7 @@ export function ProfileForm({
   }
   return (
     <form className="panel profile-form" onSubmit={submit}>
-      <h2>Your account</h2>
+      <h2>Profile</h2>
       <p className="section-copy">
         Introduce yourself to the lab. Your name, academic role and affiliation
         appear in the team directory.
@@ -55,7 +55,7 @@ export function ProfileForm({
         </label>
         <div className="form-grid">
           <label>
-            Academic role <span className="optional-label">Optional</span>
+            <span>Academic role <span className="optional-label">Optional</span></span>
             <input
               aria-label="Academic role"
               maxLength={150}
@@ -65,7 +65,7 @@ export function ProfileForm({
             />
           </label>
           <label>
-            Affiliation <span className="optional-label">Optional</span>
+            <span>Affiliation <span className="optional-label">Optional</span></span>
             <input
               aria-label="Affiliation"
               maxLength={300}
@@ -75,23 +75,11 @@ export function ProfileForm({
             />
           </label>
         </div>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={reminders}
-            onChange={(e) => setReminders(e.target.checked)}
-          />
-          Email me relevant reminders
-        </label>
-        <p className="field-help">
-          Weekly reminders only for updates you haven’t submitted, plus
-          deadlines for your active projects.
-        </p>
+        <div className="profile-account"><span>Google account</span><strong>{person.email}</strong></div>
+        <section className="profile-reminders"><h2>Reminders</h2>
+        <label className="check-label"><input type="checkbox" role="switch" checked={reminders} onChange={(e) => setReminders(e.target.checked)} />Email me relevant reminders</label>
+        <p className="field-help">Weekly reminders only for updates you haven’t submitted, plus deadlines for your active projects.</p></section>
       </fieldset>
-      <div className="profile-account">
-        <span>Google account</span>
-        <strong>{person.email}</strong>
-      </div>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -211,6 +199,7 @@ export function SettingsForm({
           {notice}
         </p>
       )}
+      <p className="schedule-preview">Updates are due every {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][Number(form.reportingDay)-1]} at {form.reportingTime} ({form.timezone}).</p>
       <div className="profile-actions">
         <button className="button primary" disabled={busy}>
           {busy ? "Saving…" : "Save schedule"}

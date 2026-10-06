@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRightIcon, CalendarBlankIcon, CheckCircleIcon, UserIcon } from "@phosphor-icons/react";
 import type { Workspace, Workstream } from "@/lib/types";
-import { shortDate } from "@/lib/format";
+import { shortDate, latestReports } from "@/lib/format";
 import { localDateTime } from "@/lib/calendar";
 import { Modal } from "./modal";
 
@@ -17,12 +17,14 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
   changeStatus: (projectId: string, workstreamId: string, status: Workstream["status"]) => Promise<void>;
 }) {
   const [chooseProject, setChooseProject] = useState(false);
+  const [reportingOpen, setReportingOpen] = useState(false);
   const manager = data.identity.role === "admin";
-  const active = data.projects.filter((p) => p.state === "active");
+  const active = data.projects.filter((p) => p.state === "active").sort((a, b) => a.name.localeCompare(b.name));
   const ownIds = new Set(data.memberships.filter((m) => m.personId === data.identity.personId).map((m) => m.projectId));
   const ownProjects = active.filter((p) => ownIds.has(p.id));
   const projects = manager && !ownProjects.length ? active : ownProjects;
   const current = data.updates.filter((u) => u.weekStart === data.weekStart);
+  const help = latestReports(data.updates).filter((u) => u.needsHelp === "true" && active.some((p) => p.id === u.projectId));
   const reported = (projectId: string, personId = data.identity.personId) => current.some((u) => u.projectId === projectId && u.personId === personId);
   const pending = ownProjects.filter((p) => !reported(p.id));
   const responsibilities = active.flatMap((p) => (p.workstreams ?? [])
@@ -54,7 +56,7 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
           <h2>{allSubmitted ? "Your updates are up to date" : ownProjects.length ? data.reportingDue.passed ? "Your weekly update is due" : `Your update is due ${dueDay}` : manager ? "This week in the lab" : "Find your next project"}</h2>
           <p>{ownProjects.length ? allSubmitted ? "You can edit your updates until the reporting week closes." : `Share progress on your project work. Due ${shortDate(data.reportingDue.date)} at ${data.reportingDue.time} (${data.settings.timezone}).` : manager ? `Team updates are due ${shortDate(data.reportingDue.date)} at ${data.reportingDue.time} (${data.settings.timezone}).` : "Join the projects you work on to share progress with the team."}</p>
         </div>
-        {ownProjects.length ? <button className="home-primary" onClick={openUpdate}>{allSubmitted ? "Edit an update" : "Write an update"}</button> : <Link className="home-primary" href={manager && active.length ? "#lab-reporting" : "/projects"}>{manager && active.length ? "View reporting" : "Browse projects"}</Link>}
+        {ownProjects.length ? <button className="home-primary" onClick={openUpdate}>{allSubmitted ? "Edit an update" : "Write an update"}</button> : <Link className="home-primary" href={manager && active.length ? "#lab-reporting" : "/projects"} onClick={() => { if (manager && active.length) setReportingOpen(true); }}>{manager && active.length ? "View reporting" : "Browse projects"}</Link>}
       </section>
 
       <section className="home-section" aria-labelledby="home-projects-heading">
@@ -90,14 +92,15 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
         </ul> : <p className="home-empty-line">No responsibilities assigned to you yet. Project owners can add them in the project workspace.</p>}
       </section>
 
-      {manager && active.length > 0 && <details className="home-reporting" id="lab-reporting">
+      {manager && active.length > 0 && <details className="home-reporting" id="lab-reporting" open={reportingOpen} onToggle={(e) => setReportingOpen(e.currentTarget.open)}>
         <summary>Lab reporting <span>{current.length} {current.length === 1 ? "update" : "updates"} shared this week</span></summary>
         <p className="home-muted">One update per person, per project. Members joining after the deadline start reporting next week.</p>
         <ul>{active.map((p) => {
           const members = data.memberships.filter((m) => m.projectId === p.id && (localDateTime(new Date(m.joinedAt), data.settings.timezone) <= `${data.reportingDue.date}T${data.reportingDue.time}` || reported(p.id, m.personId)));
           const missing = members.filter((m) => !reported(p.id, m.personId));
-          const helping = current.filter((u) => u.projectId === p.id && u.needsHelp === "true");
-          return <li key={p.id}><Link href={`/projects/${p.id}`} prefetch={false}>{p.name}</Link><span>{members.length - missing.length}/{members.length} shared</span><span className="home-muted">{helping.length ? `${helping.length} needing help` : missing.length ? `${missing.length} ${data.reportingDue.passed ? "missing" : "awaited"}` : members.length ? "Up to date" : "No reports expected"}</span></li>;
+          const helping = help.filter((u) => u.projectId === p.id);
+          const blocked = (p.workstreams ?? []).filter((w) => !w.archived && w.status === "Blocked");
+          return <li key={p.id}><Link href={`/projects/${p.id}`} prefetch={false}>{p.name}</Link><span>{members.length - missing.length}/{members.length} shared</span><span className="home-muted">{helping.length || blocked.length ? `${helping.length + blocked.length} help ${helping.length + blocked.length === 1 ? "request" : "requests"}` : missing.length ? `${missing.length} ${data.reportingDue.passed ? "missing" : "awaited"}` : members.length ? "Up to date" : "No reports expected"}</span></li>;
         })}</ul>
       </details>}
 
