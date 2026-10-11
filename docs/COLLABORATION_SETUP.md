@@ -5,7 +5,7 @@ required for production project changes: the Sheets API has no conditional row
 update or transaction combining a checked version with dependent writes. A
 process-local mutex would not protect separate Vercel instances.
 
-## Deployment-time setup (not performed by this change)
+## Required production writer setup
 
 1. Back up the configured spreadsheet. Stop all old application writers and cron
    runs during cutover; do not run old and new app versions concurrently.
@@ -25,8 +25,8 @@ process-local mutex would not protect separate Vercel instances.
    to **one script deployment**, never separate copies. Restrict spreadsheet
    editor access to trusted operators; manual edits bypass application policies.
 5. Release the application and inspect a safe test project before allowing live
-   writes. No script, production schema change, or release is deployed by this
-   coding task. Without these variables the existing lab remains readable, but
+   writes. Deploying the Next.js app does not configure this script or its
+   credentials. Without these variables the existing lab remains readable, but
    project mutations fail with a setup message instead of making unsafe writes.
 
 ## Additive migration and rollback
@@ -69,6 +69,29 @@ recovery rather than resetting a shared spreadsheet. Signup, profile, settings,
 and delivery-log writes remain on their existing separate Sheets paths.
 
 ## Testing the deployed app
+
+### Test editing without a manager account
+
+You do not need to create a project to test collaboration. Sign in with your
+normal lab account, open an existing **active** project, and choose **Join
+project**. The access panel then says **You can edit this project** and lists
+its members. On **Overview**, choose **Edit project details**, or use **Project
+settings** to edit the name and goal. Save a small agreed change, then have a
+second lab member join the same project in their own browser and verify the
+saved details. Both members can edit; **Activity** records each person’s changes.
+Use **View project team** to see contributors, supervisors and reporting lines.
+Ordinary contributors cannot change team membership, supervisors or folders.
+
+New projects and folders still require the configured lab manager. The manager
+can create a folder from the always-visible **Folders** section on Projects.
+A lead, supervisor or manager opens each related project and chooses **Change
+type or folder** to select the same folder. The folder card shows the project
+count; selecting it filters the list to those projects. Grouping preserves each
+project’s separate identity, team and history. No projects are merged or deleted.
+If joining or saving shows a storage setup error, the deployed Apps Script writer
+described above must be configured; that error is distinct from membership access.
+
+### Full manager and member rehearsal
 
 Use a clearly named test project, such as **Collaboration test**, so existing lab
 projects remain intact. For an isolated rehearsal, use a separate Vercel test

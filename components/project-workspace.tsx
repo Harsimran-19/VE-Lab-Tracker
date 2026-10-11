@@ -37,6 +37,10 @@ export function ProjectWorkspace({ project, data, busy, edit, saved, clearMilest
   </div></details>;
 
   return <div className="project-workspace">
+    <section className="project-access" aria-label="Your project access">
+      <div><h2>{manager ? "You can edit this project" : "Join the team to edit this project"}</h2><p>{manager ? "Edit details, resources, milestones and responsibilities. Your changes are shared with the team and recorded in Activity." : project.state === "active" ? "Choose Join project above to become a contributor. You can then edit details and progress alongside the other members." : "This project is not active. Ask its lead or the lab manager about joining."}</p><p>Team: {data.memberships.filter(m=>m.projectId===project.id).map(m=>data.people.find(p=>p.id===m.personId)?.name || "Member").join(" · ") || "No members yet"}</p>{manage && <p>You can also manage members, supervisors and the project’s folder.</p>}</div>
+      <button className="button secondary" onClick={()=>setTab("People")}>View project team</button>
+    </section>
     <div className="project-lead-line"><span>{project.type === "Research" ? "Lead researcher" : "Project lead"}: {lead ? <Link href={`/team/${lead.id}`} prefetch={false}>{lead.name}</Link> : "Unassigned"}</span><span>Supervisors: {supervisors.length ? supervisors.map((person,i)=><span key={i}>{i>0 && " · "}{person ? <Link href={`/team/${person.id}`} prefetch={false}>{person.name}</Link> : "Unassigned"}</span>) : "Unassigned"}</span>{project.priority && <span>Priority: {project.priority}</span>}{manager && project.state === "active" && <button className="text-action" onClick={() => edit("phase")}>Change phase</button>}</div>
     {project.phase && STAGES.some(stage=>stage===project.phase) ? <ol className="research-timeline" aria-label="Research phase">{STAGES.map((stage) => <li key={stage} className={stage === project.phase ? "current" : ""} aria-current={stage === project.phase ? "step" : undefined}><CircleIcon size={20} weight={stage === project.phase ? "fill" : "regular"} className="timeline-dot" aria-hidden="true" /><span>{stage}</span></li>)}</ol> : <p className="section-copy">{project.phase ? `Current phase: ${project.phase}` : "Research phase not set."}</p>}
     {project.updatedAt && <p className="section-copy">Last updated by {lastChange?.actorName || data.people.find(p=>p.id===project.updatedBy)?.name || "Former member"} · <time dateTime={project.updatedAt} title={project.updatedAt}>{reportDate(project.updatedAt,data.settings.timezone)}</time></p>}
@@ -44,6 +48,7 @@ export function ProjectWorkspace({ project, data, busy, edit, saved, clearMilest
     <section role="tabpanel" id={`project-panel-${tab}`} aria-labelledby={`project-tab-${tab}`}>
       {tab === "Overview" && <div className="project-overview-grid">
         <div>
+          <ProjectContext project={project} data={data} saved={saved} mode="resources" />
           <section className="project-next-step"><p className="field-label">Next milestone</p><h2>{project.milestone || "No milestone set"}</h2>{project.due && <p className="milestone-date">Due {shortDate(project.due)}{project.state === "active" && dayDifference(project.due, data.today) < 0 ? " · Overdue" : ""}</p>}{manager && project.state === "active" && <div className="inline-actions"><button className="text-action" onClick={() => edit("milestone")}>{project.milestone ? "Edit milestone" : "Set milestone"}</button>{project.milestone && <button className="text-action muted" disabled={busy} onClick={() => { void clearMilestone(); }}>Remove milestone</button>}</div>}</section>
           <ProjectContext project={project} data={data} saved={saved} mode="responsibilities" />
         </div>

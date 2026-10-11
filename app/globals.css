@@ -3251,6 +3251,27 @@ fieldset {
 .project-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 18px 0; }
 .project-filters label { min-width: 180px; }
 .project-filters .scope-toggle { margin: 0; min-width: 0; min-height: 44px; }
+.folder-browser { margin: 24px 0 32px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.folder-browser .section-heading { flex-wrap: wrap; gap: 16px; align-items: start; }
+.folder-browser h2, .project-access h2 { font-size: 18px; margin: 0 0 8px; }
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; margin: 20px 0; }
+.folder-grid:empty { display: none; }
+.folder-card { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow-wrap: anywhere; }
+.folder-card.is-selected { border-color: var(--primary); background: var(--light); }
+.folder-browse { display: flex; gap: 14px; align-items: center; width: 100%; padding: 18px; text-align: left; color: var(--ink); background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.folder-browse > svg { flex-shrink: 0; }
+.folder-browse > span { flex: 1; min-width: 0; }
+.folder-browse strong { display: block; font-size: 16px; }
+.folder-browse span span { display: block; color: var(--muted); font-size: 13px; margin-top: 5px; }
+.folder-browse:hover { background: var(--light); }
+.folder-description { margin: 0 18px 14px; color: var(--muted); font-size: 13px; }
+.folder-edit { margin: 0 18px 18px; }
+.folder-empty { margin: 18px 0; padding: 18px; background: var(--bg); border-radius: 8px; line-height: 1.6; }
+.project-access { display: flex; align-items: start; justify-content: space-between; gap: 20px; padding: 20px; margin-bottom: 24px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.project-access > div { min-width: 0; }
+.project-access p { font-size: 13px; line-height: 1.6; margin: 6px 0 0; overflow-wrap: anywhere; }
+.project-access > button { flex-shrink: 0; }
+@media (max-width: 700px) { .folder-browser { padding: 18px; } .project-access { flex-direction: column; } }
 .folder-row { min-width: 0; overflow-wrap: anywhere; }
 .project-people .directory-table td { overflow-wrap: anywhere; }
 .project-activity dd { overflow-wrap: anywhere; white-space: pre-wrap; }

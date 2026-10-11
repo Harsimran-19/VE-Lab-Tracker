@@ -108,7 +108,7 @@ export function LabApp({
     await action(async () => {
       await mutate("/api/join", { projectId: id });
       await refresh();
-      setNotice("Project joined. You can now write your weekly update.");
+      setNotice("Project joined. You can now edit project details and progress, and write your weekly update.");
     });
   }
   function reportCard(u: Update) {
@@ -305,7 +305,8 @@ export function LabApp({
                 {!manager && own.length > 0 && <label className="check-label scope-toggle"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />Only my projects</label>}
                 {(typeFilter || folderFilter) && <button className="text-action" onClick={()=>{setTypeFilter("");setFolderFilter("");}}>Clear filters</button>}
               </div>
-              <ProjectFolders data={data} saved={refresh} browse={setFolderFilter} />
+              {!manager && <p className="section-copy">Open an active project and choose Join project to contribute and edit its details. The lab manager creates new projects.</p>}
+              <ProjectFolders data={data} saved={refresh} browse={setFolderFilter} selected={folderFilter} />
               {filtered.length > 0 ? <ProjectTable projects={[...filtered].sort((a,b) => a.name.localeCompare(b.name))} data={data} /> : <section className="empty-state"><h2>{!data.projects.length ? "No projects yet" : search ? "No matching projects" : "No projects in this view"}</h2><p>{!data.projects.length ? manager ? "Create a project with a clear goal to get started." : "Projects will appear when the manager adds them." : "Try another search or project filter."}</p></section>}
             </>
           )}
