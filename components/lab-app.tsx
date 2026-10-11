@@ -299,9 +299,13 @@ export function LabApp({
                   {[{label:"Active",state:"active"},{label:"Completed",state:"completed"},{label:"Paused",state:"on-hold"}].map(({label,state}) => <button key={state} className={(onHold ? "on-hold" : completed ? "completed" : "active") === state ? "selected" : ""} aria-pressed={(onHold ? "on-hold" : completed ? "completed" : "active") === state} onClick={() => {setCompleted(state === "completed");setOnHold(state === "on-hold");}}>{label}</button>)}
                 </div>
               </div>
-              <div className="project-filters"><label>Project type<select aria-label="Project type" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="">All types</option>{PROJECT_TYPES.map(t=><option key={t}>{t}</option>)}<option value="unclassified">Unclassified</option></select></label><label>Folder<select aria-label="Folder" value={folderFilter} onChange={e=>setFolderFilter(e.target.value)}><option value="">All folders</option><option value="ungrouped">Ungrouped</option>{data.folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>{(typeFilter || folderFilter) && <button className="text-action" onClick={()=>{setTypeFilter("");setFolderFilter("");}}>Clear filters</button>}</div>
+              <div className="project-filters">
+                <label>Project type<select aria-label="Project type" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="">All types</option>{PROJECT_TYPES.map(t=><option key={t}>{t}</option>)}<option value="unclassified">Unclassified</option></select></label>
+                <label>Folder<select aria-label="Folder" value={folderFilter} onChange={e=>setFolderFilter(e.target.value)}><option value="">All folders</option><option value="ungrouped">Ungrouped</option>{data.folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+                {!manager && own.length > 0 && <label className="check-label scope-toggle"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />Only my projects</label>}
+                {(typeFilter || folderFilter) && <button className="text-action" onClick={()=>{setTypeFilter("");setFolderFilter("");}}>Clear filters</button>}
+              </div>
               <ProjectFolders data={data} saved={refresh} browse={setFolderFilter} />
-              {!manager && own.length > 0 && <label className="check-label scope-toggle"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />Only my projects</label>}
               {filtered.length > 0 ? <ProjectTable projects={[...filtered].sort((a,b) => a.name.localeCompare(b.name))} data={data} /> : <section className="empty-state"><h2>{!data.projects.length ? "No projects yet" : search ? "No matching projects" : "No projects in this view"}</h2><p>{!data.projects.length ? manager ? "Create a project with a clear goal to get started." : "Projects will appear when the manager adds them." : "Try another search or project filter."}</p></section>}
             </>
           )}

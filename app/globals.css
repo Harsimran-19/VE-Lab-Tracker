@@ -3250,6 +3250,7 @@ fieldset {
 .project-row-meta { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .project-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 18px 0; }
 .project-filters label { min-width: 180px; }
+.project-filters .scope-toggle { margin: 0; min-width: 0; min-height: 44px; }
 .folder-row { min-width: 0; overflow-wrap: anywhere; }
 .project-people .directory-table td { overflow-wrap: anywhere; }
 .project-activity dd { overflow-wrap: anywhere; white-space: pre-wrap; }

@@ -1,8 +1,55 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 const origin="http://localhost:3100";
 async function workspace(api:APIRequestContext){return (await api.get("/api/workspace")).json();}
 async function write(api:APIRequestContext,path:string,data:object,method="PATCH") {return api.fetch(path,{method,data,headers:{Origin:origin}});}
 async function projectVersion(api:APIRequestContext,id:string){return (await workspace(api)).projects.find((p:{id:string})=>p.id===id).version;}
+
+test("project filters do not overlap the folder disclosure for joined members", async ({page,browser}) => {
+  test.setTimeout(120000);
+  await page.goto("/projects");
+  const names=["Academic Entrepreneurship","Double Reduction & Firm Reconfiguration","Evaluation Substitution","Feedback & Idea Evolution","Firm-Involved PBL","LLM for K-12 Design & Entrepreneurship Education"];
+  const ids=names.map(()=>crypto.randomUUID());
+  for(let i=0;i<names.length;i++) expect((await write(page.request,"/api/projects",{id:ids[i],name:names[i],goal:"Local layout regression verification"},"POST")).ok()).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole("table")).toContainText(names[0]);
+  const memberContext=await browser.newContext(), member=await memberContext.newPage();
+  await member.goto("/");
+  await member.request.post("/api/demo",{form:{view:"new"},headers:{Origin:origin}});
+  expect((await write(member.request,"/api/onboarding",{name:"Layout verification member",projectIds:[ids[0]]},"POST")).ok()).toBeTruthy();
+  await member.goto("/projects");
+
+  async function checkLayout(target:Page,width:number,height:number) {
+    await target.setViewportSize({width,height});
+    const folders=target.locator("details > summary").filter({hasText:"Folders"});
+    const scope=target.getByRole("checkbox",{name:"Only my projects",exact:true});
+    if(target===member) {
+      await expect(scope).toBeVisible();
+      const label=await scope.locator("..").boundingBox(), disclosure=await folders.boundingBox();
+      expect(label).not.toBeNull();expect(disclosure).not.toBeNull();
+      await target.screenshot({path:`/tmp/ve-filter-member-${width}.png`,fullPage:true});
+      expect(label!.y+label!.height <= disclosure!.y || disclosure!.y+disclosure!.height <= label!.y,"The folder disclosure and Only my projects must not overlap").toBeTruthy();
+    } else {
+      await expect(scope).toHaveCount(0);
+      await target.screenshot({path:`/tmp/ve-filter-manager-${width}.png`,fullPage:true});
+    }
+    expect(await target.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await folders.click();
+    await expect(target.getByRole("button",{name:"Browse ungrouped projects",exact:true})).toBeVisible();
+    if(target===member) {
+      await scope.check();await expect(scope).toBeChecked();
+      await expect(target.getByRole("table").getByRole("link",{name:names[0],exact:true})).toBeVisible();
+      await expect(target.getByRole("table").getByRole("link",{name:names[1],exact:true})).toHaveCount(0);
+      await scope.uncheck();await expect(target.getByRole("table").getByRole("link",{name:names[1],exact:true})).toBeVisible();
+    }
+    await target.screenshot({path:`/tmp/ve-filter-${target===member ? "member" : "manager"}-${width}-expanded.png`,fullPage:true});
+    await folders.click();
+  }
+  for(const [width,height] of [[2048,1100],[1487,1058],[650,900],[390,844]]) {
+    await checkLayout(member,width,height);
+    await checkLayout(page,width,height);
+  }
+  await memberContext.close();
+});
 
 test("project collaboration, reporting, filters, conflict recovery, history and mobile layout",async({page,browser})=>{
   test.setTimeout(120000);
