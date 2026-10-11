@@ -1,20 +1,22 @@
 # VE Lab Tracker
 
-A simple weekly research tracker for one Venture Engineering Lab team. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Zoho SMTP sends reminders using the existing InternUp mailbox. No new domain is needed.
+A weekly project tracker for one Venture Engineering Lab team, supporting Research, Startup and Lab Management work. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Zoho SMTP sends reminders using the existing InternUp mailbox. No new domain is needed.
 
 ## Workflow
 
-Manager: sign in → create a project with its direction, lead, phase, priority and first milestone → share the website → review weekly progress, missing updates, help requests and deadlines.
+Manager: sign in → create a project with its type, direction, lead, phase, priority and first milestone → review weekly progress, missing updates, help requests and deadlines.
 
 Member: Google sign-in → confirm name → choose projects → My work → report accomplishments and next step. “I need help” reveals a required blocker explanation. Saving again edits the same current-week report.
 
 - **Home:** manager lab overview or the member's own work.
 - **Projects:** discover and join active projects, read shared reports, or review completed projects.
-- **Project page:** Progress opens first, with reports, members and optional responsibilities. A visible **Project settings** button lets managers edit the name, goal, lead, priority, phase, methods, milestone and publication plan together. Project details contains research context, resources, notes and external collaborators. Managers can pause, complete and reopen the project. Earlier weeks are available when history exists.
+- **Project page:** Overview opens first with the milestone, responsibilities, type and folder. Updates, Resources, People and Activity use the existing tabs. Assigned members can edit ordinary details and progress through **Project settings** and the existing editors. The project lead, supervisors and lab managers additionally manage the team, reporting relationships, lead, type, folder and pause/complete/reopen state. Earlier weekly reports remain available.
 - **Team:** every actual signup, including people without projects. Both roles can open a member’s contact details and project links from this directory or a report/project member name.
 - **Account:** name, academic role, affiliation and email preference are visible directly. Role and affiliation are optional and appear in the shared team directory. Managers also set the reporting day, time and timezone and test their email delivery.
 
-The creation form asks for the name and goal, then shows lead, priority, research phase, methods and an optional first milestone with a due date. Idea and Steady are editable defaults; only the name and goal are required. Full research title and publication details are available in an optional section of the same form. A milestone must have both a description and a date. Managers assign responsibilities to people who have joined the project; owners can update their own status. Responsibilities can be archived and restored. External collaborators are project contacts, not signups or reporting members. Team remains a shared directory of actual signups.
+The creation form asks for the name, goal and project type, then shows lead, priority, research phase, methods and an optional first milestone with a due date. Research projects start at Idea; Startup and Lab Management start with no research phase. Steady is an editable priority default. The creator is the default lead; selecting another lab member gives that person project membership. Full research title and publication details remain optional. A milestone must have both a description and a date. Assigned members can maintain responsibilities for current project members. Responsibilities can be archived and restored. External collaborators remain contacts and grant no access. Team remains a shared directory of actual signups.
+
+Projects shows the designated lead and all supervisors, with type and folder filters composing with the existing search and project-state filters. Folders group projects at one level; moving a project preserves its URL and content. Only lab managers manage folders. Removing a folder leaves its projects ungrouped. People supports multiple researchers and supervisors, overlapping responsibilities and project-scoped reporting to one or more supervisors. Existing lab-wide visibility and self-join behavior remain unchanged.
 
 Weekly reports still ask for accomplishments, next steps and help needed. Members can optionally tag several of their responsibilities in one report. The server records their names with the report so earlier reports remain understandable after responsibilities change. There are no hours or confidence-score requirements. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
 
@@ -29,13 +31,13 @@ Creating a project does not create members. Members appear after their own Googl
 
 ## Fresh Google Sheets data
 
-The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries** automatically when needed. Old tracker tabs are neither read nor imported; production starts with zero projects and only actual Google signups. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate clean tabs without altering its old records. No initialization/reset step is needed.
+The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries, LabFolders, LabActivity, LabRevision** automatically when needed. Old tracker tabs are neither read nor imported. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate lab tabs without altering its old records. Production project writes require the locked writer setup below; no data reset is needed.
 
-Existing lab tabs upgrade automatically: the app appends optional headers to the original Projects, Members and Reports schemas without modifying data rows. Unexpected headers are refused rather than overwritten. Resource links, responsibilities, collaborators and report responsibility labels are stored as validated JSON in the corresponding lab row. No sample workbook data is imported.
+Existing lab tabs upgrade additively: supported original Projects, Members, Memberships and Reports headers receive optional columns without changing old data rows. Unexpected headers are refused rather than overwritten. Resource links, responsibilities, collaborators, reporting relationships and report responsibility labels use validated JSON. Existing IDs, URLs, content and phase values survive. Legacy types remain Unclassified; unknown leads remain Unassigned. A recorded lead with a valid lab profile receives membership without an invented join date. No historical supervisors, reporting links, actors or dates are guessed. See [collaboration setup and migration](docs/COLLABORATION_SETUP.md).
 
 Google signup requires a verified email. Manager permissions come from `ADMIN_EMAILS`; users cannot choose their role. `harsimran1869@gmail.com` is the designated test manager. Google login requests only `openid`, `email`, `profile`; the service account writes to Sheets. Writes use RAW values. Delivery logs stay server-side.
 
-One deterministic report ID per person/project/week prevents duplicate logical reports on retries. Current-week reports can be edited; past weeks cannot be backdated by the client. Membership IDs are stable. Sheets has no transactions: concurrent edits to the same report may overwrite one another. Last rows with matching IDs are the logical record.
+One deterministic report ID per person/project/week prevents duplicate logical reports on retries. Current-week reports can be edited; past weeks cannot be backdated by the client. Membership IDs are stable. Project-domain changes use integer record versions and one shared, locked Apps Script writer: a conditional revision check and atomic Sheets batch commit save the change and append-only activity together. Stale saves preserve the newer data; forms retain unsaved input and allow explicit review and retry. The server derives the actor and time. Without the configured writer, production project writes fail safely while reads remain available.
 
 ## Email policy
 
@@ -43,7 +45,7 @@ One deterministic report ID per person/project/week prevents duplicate logical r
 - Project milestones: one reminder the day before and one on the due date.
 - Responsibility deadlines: reminders to the owner the day before and on the due date; done and archived responsibilities are excluded.
 - Managers: one weekly summary after the reporting cutoff, including missing reports and unresolved help.
-- Completed and paused projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week.
+- Completed and paused projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week. Legacy memberships with unknown join dates are excluded until a real report establishes participation. Removed members receive no responsibility reminders for that project.
 
 `vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
 
@@ -70,4 +72,4 @@ Stop this checkout's dev server before browser tests, which start dev on 3100 an
 
 ## Deployment
 
-The user handles Vercel deployment. Set the private variables from `.env.example`, configure the matching Google callback, set `DEMO_MODE=false`, and redeploy. Credentials belong in private Vercel/cloud settings or ignored `.env.local`; never in Git or chat. Cloud and Vercel configuration are separate. [fictional.env](docs/fictional.env) demonstrates invalid example values.
+The user handles Vercel deployment. Complete [the locked writer setup](docs/COLLABORATION_SETUP.md), set the private variables from `.env.example`, configure the matching Google callback, set `DEMO_MODE=false`, and redeploy. Stop old writers during cutover. Credentials belong in private Vercel/cloud settings or ignored `.env.local`; never in Git or chat. Cloud and Vercel configuration are separate. [fictional.env](docs/fictional.env) demonstrates invalid example values.

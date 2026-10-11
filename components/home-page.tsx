@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowRightIcon, CalendarBlankIcon, CheckCircleIcon, UserIcon } from "@phosphor-icons/react";
 import type { Workspace, Workstream } from "@/lib/types";
 import { shortDate, latestReports } from "@/lib/format";
-import { localDateTime } from "@/lib/calendar";
+import { membershipJoinedBefore } from "@/lib/calendar";
 import { Modal } from "./modal";
 
 export function HomePage({ data, busy, writeUpdate, createProject, changeStatus }: {
@@ -27,7 +27,7 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
   const help = latestReports(data.updates).filter((u) => u.needsHelp === "true" && active.some((p) => p.id === u.projectId));
   const reported = (projectId: string, personId = data.identity.personId) => current.some((u) => u.projectId === projectId && u.personId === personId);
   const pending = ownProjects.filter((p) => !reported(p.id));
-  const responsibilities = active.flatMap((p) => (p.workstreams ?? [])
+  const responsibilities = active.filter(p=>ownIds.has(p.id)).flatMap((p) => (p.workstreams ?? [])
     .filter((w) => !w.archived && w.ownerId === data.identity.personId)
     .map((w) => ({ ...w, projectId: p.id, projectName: p.name })))
     .sort((a, b) => Number(a.status === "Done") - Number(b.status === "Done") || (a.due || "9999").localeCompare(b.due || "9999"));
@@ -69,8 +69,8 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
             <table className="home-project-table">
               <thead><tr><th>Project</th><th>Phase</th><th>Next milestone</th><th>Due date</th><th><span className="sr-only">Open project</span></th></tr></thead>
               <tbody>{projects.slice(0, 6).map((p) => <tr key={p.id}>
-                <td><Link href={`/projects/${p.id}`} prefetch={false} className="home-project-name">{p.name}</Link></td>
-                <td><span className="home-phase">{p.phase}</span></td>
+                <td><Link href={`/projects/${p.id}`} prefetch={false} className="home-project-name">{p.name}</Link><small className="project-row-meta home-muted">Lead: {data.people.find(person=>person.id===p.leadId)?.name || "Unassigned"} · Supervisors: {data.memberships.filter(m=>m.projectId===p.id && m.supervisor).map(m=>data.people.find(person=>person.id===m.personId)?.name || "Member").join(" · ") || "Unassigned"}</small></td>
+                <td><span className="home-phase">{p.phase || "Not set"}</span></td>
                 <td>{p.milestone || <span className="home-muted">No milestone set</span>}</td>
                 <td className="home-date">{p.due ? shortDate(p.due) : <span className="home-muted">No due date</span>}</td>
                 <td><Link href={`/projects/${p.id}`} prefetch={false} className="home-row-link" aria-label={`Open ${p.name}`}><ArrowRightIcon size={20} aria-hidden="true" /></Link></td>
@@ -96,7 +96,7 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
         <summary>Lab reporting <span>{current.length} {current.length === 1 ? "update" : "updates"} shared this week</span></summary>
         <p className="home-muted">One update per person, per project. Members joining after the deadline start reporting next week.</p>
         <ul>{active.map((p) => {
-          const members = data.memberships.filter((m) => m.projectId === p.id && (localDateTime(new Date(m.joinedAt), data.settings.timezone) <= `${data.reportingDue.date}T${data.reportingDue.time}` || reported(p.id, m.personId)));
+          const members = data.memberships.filter((m) => m.projectId === p.id && (membershipJoinedBefore(m,data.settings.timezone,`${data.reportingDue.date}T${data.reportingDue.time}`) || reported(p.id, m.personId)));
           const missing = members.filter((m) => !reported(p.id, m.personId));
           const helping = help.filter((u) => u.projectId === p.id);
           const blocked = (p.workstreams ?? []).filter((w) => !w.archived && w.status === "Blocked");

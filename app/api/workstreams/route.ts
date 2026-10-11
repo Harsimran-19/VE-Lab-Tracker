@@ -3,19 +3,19 @@ import { authorizedContext } from "@/lib/auth";
 import { requireSameOrigin } from "@/lib/access";
 import { apiError, readJson } from "@/lib/api";
 import { planWorkstreamChange } from "@/lib/project-details";
-import { saveProject } from "@/lib/store";
+import { mutateProjectDomain } from "@/lib/store";
+import { checkVersion, versionedInput } from "@/lib/collaboration";
 export async function PATCH(request: Request) {
   try {
     requireSameOrigin(request);
-    const { identity, store } = await authorizedContext();
-    const project = planWorkstreamChange(
-      store,
-      identity,
-      await readJson(request),
-    );
-    await saveProject(project);
+    const { identity } = await authorizedContext();
+    const { expectedVersion, input } = versionedInput(await readJson(request));
+    const project = await mutateProjectDomain(identity, "Responsibilities", "Updated responsibility", (store, current) => {
+      const changed = planWorkstreamChange(store, current, input);
+      checkVersion(changed.version, expectedVersion);
+      store.projects = store.projects.map(p => p.id === changed.id ? changed : p);
+      return changed;
+    });
     return NextResponse.json({ project });
-  } catch (e) {
-    return apiError(e);
-  }
+  } catch (e) { return apiError(e); }
 }

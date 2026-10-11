@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import type { Project, Person } from "@/lib/types";
-import { STAGES, PRIORITIES, PUBLICATION_STATUSES } from "@/lib/types";
+import { STAGES, PRIORITIES, PUBLICATION_STATUSES, PROJECT_TYPES } from "@/lib/types";
+import { ConflictReview } from "./conflict-review";
 import { Modal } from "./modal";
 export async function mutate(url: string, body: unknown, method = "POST") {
   const response = await fetch(url, {
@@ -26,12 +27,16 @@ export function ProjectForm({
   project,
   action,
   people,
+  canManage = true,
+  creatorId,
   close,
   saved,
 }: {
   project?: Project;
   action: ProjectAction;
   people: Person[];
+  canManage?: boolean;
+  creatorId?: string;
   close: () => void;
   saved: () => Promise<void>;
 }) {
@@ -44,9 +49,11 @@ export function ProjectForm({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [confirmed, setConfirmed] = useState(false);
+  const [expectedVersion, setExpectedVersion] = useState(project?.version ?? 0);
+  const [type, setType] = useState(project?.type || "Research");
   const configuring = action === "create" || action === "settings";
   const [setup, setSetup] = useState({
-    leadId: project?.leadId ?? "",
+    leadId: project?.leadId ?? creatorId ?? "",
     priority: project?.priority ?? "Steady",
     methods: project?.methods ?? "",
     fullTitle: project?.fullTitle ?? "",
@@ -82,7 +89,7 @@ export function ProjectForm({
               milestone,
               due,
               ...setup,
-              ...(action === "settings" ? { action } : {}),
+              ...(action === "settings" ? { action } : { type }),
             }
           : action === "goal"
             ? { id, action, name, goal }
@@ -93,7 +100,7 @@ export function ProjectForm({
                 : { id, action };
         await mutate(
           "/api/projects",
-          body,
+          action === "create" ? body : { ...body, expectedVersion },
           action === "create" ? "POST" : "PATCH",
         );
         setConfirmed(true);
@@ -129,7 +136,7 @@ export function ProjectForm({
                 />
               </label>
               <label>
-                Research goal
+                {type === "Research" ? "Research goal" : "Project goal"}
                 <textarea
                   aria-label="Goal"
                   required
@@ -146,8 +153,9 @@ export function ProjectForm({
             <>
               <section className="setup-section" aria-label="Research and ownership">
                 <div className="form-grid">
-                  <label>Research phase<select aria-label="Current phase" value={phase} onChange={(e) => setPhase(e.target.value)}>{STAGES.map((value) => <option key={value}>{value}</option>)}</select></label>
-                  <label>Project lead<select aria-label="Project lead" value={setup.leadId} onChange={(e) => updateSetup("leadId",e.target.value)}><option value="">Choose later</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+                  {action === "create" && <label>Project type<select aria-label="Project type" value={type} onChange={e => { setType(PROJECT_TYPES.find(t=>t===e.target.value) ?? "Research"); setPhase(e.target.value === "Research" ? "Idea" : ""); }}>{PROJECT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>}
+                  <label>Research phase<select aria-label="Current phase" value={phase} onChange={(e) => setPhase(e.target.value)}><option value="">Not set</option>{phase && !STAGES.some(s=>s===phase) && <option value={phase}>{phase}</option>}{STAGES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  <label>Project lead<select disabled={!canManage} aria-label="Project lead" value={setup.leadId} onChange={(e) => updateSetup("leadId",e.target.value)}><option value="">{action === "create" ? "Use creator" : "Unassigned"}</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
                 </div>
                 <div className="form-grid">
                   <label>Priority<select aria-label="Priority" value={setup.priority} onChange={(e) => updateSetup("priority",e.target.value)}><option value="">Choose later</option>{PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -276,6 +284,7 @@ export function ProjectForm({
                 value={phase}
                 onChange={(e) => setPhase(e.target.value)}
               >
+                <option value="">Not set</option>
                 {STAGES.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
@@ -335,6 +344,7 @@ export function ProjectForm({
             {error}
           </p>
         )}
+        <ConflictReview error={error} projectId={project?.id} accept={version => {setExpectedVersion(version); setError("");}} />
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={close}>
             Cancel

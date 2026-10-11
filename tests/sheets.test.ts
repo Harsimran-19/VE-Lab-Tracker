@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { JWT } from "google-auth-library";
 import { TABLES, readSheet, ensureTables, upsertSheet } from "../lib/sheets";
 import { fixture } from "./fixture";
+import { readStore } from "../lib/store";
 import { emptyStore } from "../lib/types";
 const originalFetch = globalThis.fetch,
   originalToken = JWT.prototype.getAccessToken;
@@ -42,6 +43,9 @@ function ranges() {
     s.updates,
     [s.settings],
     s.reminders,
+    s.folders,
+    s.activities,
+    [],
   ];
   return {
     valueRanges: Object.entries(TABLES).map(([name, headers], i) => ({
@@ -110,7 +114,7 @@ test("first setup creates only fresh tabs and headers, never old records or seed
     return response({});
   };
   await ensureTables();
-  assert.equal(urls.filter((u) => u.includes("!A1")).length, 6);
+  assert.equal(urls.filter((u) => u.includes("!A1")).length, Object.keys(TABLES).length);
   assert.equal(
     urls.some((u) => u.includes("'People'!")),
     false,
@@ -157,9 +161,9 @@ test("interrupted first setup repairs missing tabs without changing existing pro
   assert.equal(recovered.people.length, 0);
   assert.equal(recovered.settings.timezone, "Asia/Kolkata");
   assert.deepEqual(tabs.get("LabProjects"), project);
-  assert.equal(writes, 6);
+  assert.equal(writes, Object.keys(TABLES).length);
   assert.deepEqual(await readSheet(), recovered);
-  assert.equal(writes, 6);
+  assert.equal(writes, Object.keys(TABLES).length);
 });
 test("malformed populated headers are refused without overwriting data", async () => {
   let writes = 0;
@@ -232,7 +236,7 @@ test("Google permission failures are actionable and do not expose upstream crede
 });
 
 test("upgrading existing lab tabs appends only headers and keeps all original rows", async () => {
-  const legacy = { LabProjects: 7, LabMembers: 5, LabReports: 10 };
+  const legacy = { LabProjects: 7, LabMembers: 5, LabMemberships: 4, LabReports: 10 };
   const data = ranges();
   const tabs = new Map(
     Object.entries(TABLES).map(([title], i) => [
@@ -272,7 +276,7 @@ test("upgrading existing lab tabs appends only headers and keeps all original ro
     const title = url.match(/'([^']+)'!/)![1];
     if (init?.method) {
       assert.equal(init.method, "PUT");
-      assert.match(url, /!(H|F|K)1\?valueInputOption=RAW$/);
+      assert.match(url, /!(H|F|K|E)1\?valueInputOption=RAW$/);
       writes.push(title);
       tabs.get(title)![0].push(...JSON.parse(String(init.body)).values[0]);
       return response({});
@@ -280,13 +284,13 @@ test("upgrading existing lab tabs appends only headers and keeps all original ro
     return response({ values: tabs.get(title) });
   };
   const upgraded = await readSheet();
-  assert.deepEqual(writes, ["LabProjects", "LabMembers", "LabReports"]);
+  assert.deepEqual(writes, ["LabProjects", "LabMembers", "LabMemberships", "LabReports"]);
   assert.equal(upgraded.updates[0].progress, "Earlier progress");
   assert.deepEqual(upgraded.projects[0].workstreams, []);
   for (const [title, rows] of originals)
     assert.deepEqual(tabs.get(title)!.slice(1), rows);
   await readSheet();
-  assert.equal(writes.length, 3);
+  assert.equal(writes.length, 4);
 });
 
 test("structured research data round-trips as JSON and malformed data is surfaced", async () => {
@@ -329,4 +333,36 @@ test("structured research data round-trips as JSON and malformed data is surface
   data.valueRanges[0].values[1][TABLES.LabProjects.indexOf("links")] =
     '[{"label":"Unsafe","url":"javascript:alert(1)"}]';
   await assert.rejects(readSheet(), /Invalid project links/);
+});
+
+test("production snapshots reject an interleaved revision and return a consistently retried read", async () => {
+  const previous=process.env.SHEETS_TRANSACTION_URL;
+  process.env.SHEETS_TRANSACTION_URL="https://script.google.com/macros/s/local-test/exec";
+  let revisions=0,reads=0;
+  try {
+    globalThis.fetch=async(input)=>{
+      const url=decodeURIComponent(String(input));
+      if(url.includes("?fields="))return response(metadata());
+      if(url.includes("'LabRevision'!A2:B2")){revisions++;return response({values:[["lab",revisions===1 ? "0" : "1"]]});}
+      if(url.includes("values:batchGet")){reads++;const data=ranges();if(reads>1){data.valueRanges[0].values[1][1]="Consistent newest record";data.valueRanges[8].values.push(["lab","1"]);}return response(data);}
+      throw new Error("Unexpected storage request");
+    };
+    const s=await readStore();assert.equal(reads,2);assert.equal(s.revision,1);assert.equal(s.projects[0].name,"Consistent newest record");
+  } finally {if(previous===undefined)delete process.env.SHEETS_TRANSACTION_URL;else process.env.SHEETS_TRANSACTION_URL=previous;}
+});
+test("a blank configured collaboration spreadsheet bootstraps before its first revision read", async () => {
+  const previous=process.env.SHEETS_TRANSACTION_URL;process.env.SHEETS_TRANSACTION_URL="https://script.google.com/macros/s/local-test/exec";
+  const tabs=new Map<string,string[][]>();
+  try {
+    globalThis.fetch=async(input,init)=>{
+      const url=decodeURIComponent(String(input));
+      if(url.includes("?fields="))return response({sheets:[...tabs.keys()].map(title=>({properties:{title}}))});
+      if(url.includes(":batchUpdate")){for(const r of JSON.parse(String(init?.body)).requests)tabs.set(r.addSheet.properties.title,[]);return response({});}
+      if(url.includes("values:batchGet"))return response({valueRanges:Object.keys(TABLES).map(title=>({values:tabs.get(title)}))});
+      const title=url.match(/'([^']+)'!/)![1];assert.ok(tabs.has(title),"Read only initialized tables");
+      if(init?.method==="PUT"){tabs.set(title,JSON.parse(String(init.body)).values);return response({});}
+      return response({values:url.includes("A2:B2") ? [] : tabs.get(title)});
+    };
+    assert.deepEqual(await readStore(),emptyStore());assert.equal(tabs.size,Object.keys(TABLES).length);
+  } finally {if(previous===undefined)delete process.env.SHEETS_TRANSACTION_URL;else process.env.SHEETS_TRANSACTION_URL=previous;}
 });

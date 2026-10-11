@@ -17,6 +17,8 @@ import type {
   Update,
   Settings,
   Reminder,
+  Folder,
+  Activity,
 } from "./types";
 // Fresh schema: legacy tracker tabs are never read, imported, or overwritten.
 export const TABLES = {
@@ -40,6 +42,7 @@ export const TABLES = {
     "links",
     "workstreams",
     "collaborators",
+    "type", "folderId", "version", "updatedAt", "updatedBy", "reporting",
   ],
   LabMembers: [
     "id",
@@ -50,7 +53,7 @@ export const TABLES = {
     "academicRole",
     "affiliation",
   ],
-  LabMemberships: ["id", "projectId", "personId", "joinedAt"],
+  LabMemberships: ["id", "projectId", "personId", "joinedAt", "contributor", "supervisor"],
   LabReports: [
     "id",
     "createdAt",
@@ -63,6 +66,7 @@ export const TABLES = {
     "needsHelp",
     "blockers",
     "workstreams",
+    "version",
   ],
   LabSettings: ["id", "reportingDay", "reportingTime", "timezone"],
   LabDeliveries: [
@@ -75,19 +79,23 @@ export const TABLES = {
     "sentAt",
     "providerId",
   ],
+  LabFolders: ["id", "name", "description", "version"],
+  LabActivity: ["id", "projectId", "area", "action", "actorId", "actorName", "at", "changes"],
+  LabRevision: ["id", "version"],
 } as const;
 export type Table = keyof typeof TABLES;
-type Entity = Project | Person | Membership | Update | Settings | Reminder;
-const legacyLengths: Partial<Record<Table, number>> = {
-  LabProjects: 7,
-  LabMembers: 5,
-  LabReports: 10,
+type Entity = Project | Person | Membership | Update | Settings | Reminder | Folder | Activity | { id: string; version: number };
+const legacyLengths: Partial<Record<Table, number[]>> = {
+  LabProjects: [7, 19],
+  LabMembers: [5],
+  LabReports: [10, 11],
+  LabMemberships: [4],
 };
 function legacyHeaders(table: Table, row: string[]) {
   const length = legacyLengths[table];
   return (
     length !== undefined &&
-    row.length === length &&
+    length.includes(row.length) &&
     row.every((h, i) => TABLES[table][i] === h)
   );
 }
@@ -106,7 +114,7 @@ function decodeList<T>(
   }
 }
 let auth: JWT | undefined;
-async function request(path: string, init?: RequestInit) {
+export async function sheetRequest(path: string, init?: RequestInit) {
   const sheet = process.env.GOOGLE_SHEET_ID;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -157,6 +165,7 @@ async function request(path: string, init?: RequestInit) {
   }
   return response.json();
 }
+const request = sheetRequest;
 
 function toObjects<T>(values: string[][], headers: readonly string[]): T[] {
   if (headers.some((h, i) => values[0]?.[i] !== h))
@@ -215,6 +224,8 @@ export async function readSheet(): Promise<Store> {
     projects: toObjects<Project>(rows[0], TABLES.LabProjects).map(
       (project) => ({
         ...project,
+        version: numericVersion(project.version),
+        reporting: decodeList(project.reporting as unknown as string, z.array(z.object({researcherId: z.string().min(1), supervisorId: z.string().min(1)}).strict()).max(10000), "reporting relationships"),
         links: decodeList(
           project.links as unknown as string,
           z.array(resourceLinkSchema).max(10),
@@ -233,9 +244,10 @@ export async function readSheet(): Promise<Store> {
       }),
     ),
     people,
-    memberships: toObjects<Membership>(rows[2], TABLES.LabMemberships),
+    memberships: toObjects<Membership>(rows[2], TABLES.LabMemberships).map(m => ({ ...m, contributor: String(m.contributor) !== "false", supervisor: String(m.supervisor) === "true" })),
     updates: toObjects<Update>(rows[3], TABLES.LabReports).map((update) => ({
       ...update,
+      version: numericVersion(update.version),
       workstreams: decodeList(
         update.workstreams as unknown as string,
         reportWorkstreamsSchema,
@@ -247,6 +259,9 @@ export async function readSheet(): Promise<Store> {
         (s) => s.id === "lab",
       ) ?? emptyStore().settings,
     reminders: toObjects<Reminder>(rows[5], TABLES.LabDeliveries),
+    folders: toObjects<Folder>(rows[6], TABLES.LabFolders).map(f => ({...f, version: numericVersion(f.version)})),
+    activities: toObjects<Activity>(rows[7], TABLES.LabActivity).map(a => ({...a, changes: decodeList(a.changes as unknown as string, z.array(z.object({label: z.string(), before: z.string(), after: z.string()}).strict()), "activity")})),
+    revision: numericVersion(toObjects<{id: string; version: number}>(rows[8], TABLES.LabRevision).find(r => r.id === "lab")?.version),
   };
 }
 export async function ensureTables(checkHeaders = false) {
@@ -309,11 +324,17 @@ export async function ensureTables(checkHeaders = false) {
     );
   }
 }
-function cells(table: Table, entity: Entity) {
+export function cells(table: Table, entity: Entity) {
   return TABLES[table].map((h) => {
     const value = (entity as unknown as Record<string, unknown>)[h];
     return Array.isArray(value) ? JSON.stringify(value) : String(value ?? "");
   });
+}
+function numericVersion(value: unknown): number {
+  if (value === "" || value === undefined) return 0;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) throw new AppError("Invalid version in the lab spreadsheet.", 409);
+  return number;
 }
 export async function upsertSheet(table: Table, entity: Entity) {
   await ensureTables();

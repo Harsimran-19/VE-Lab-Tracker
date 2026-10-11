@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { Workspace } from "@/lib/types";
 import { shortDate } from "@/lib/format";
+import { ConflictReview } from "./conflict-review";
 import { Modal } from "./modal";
 import { mutate } from "./forms";
 export function EntryForm({
@@ -25,6 +26,7 @@ export function EntryForm({
       u.personId === data.identity.personId &&
       u.weekStart === data.weekStart,
   );
+  const [expectedVersion, setExpectedVersion] = useState(existing?.version ?? 0);
   const [progress, setProgress] = useState(existing?.progress ?? ""),
     [nextPlan, setNextPlan] = useState(existing?.nextPlan ?? ""),
     [needsHelp, setNeedsHelp] = useState(existing?.needsHelp === "true"),
@@ -53,6 +55,7 @@ export function EntryForm({
       if (!confirmed) {
         await mutate("/api/entries", {
           projectId,
+          expectedVersion,
           weekStart: formWeek,
           progress,
           nextPlan,
@@ -177,6 +180,7 @@ export function EntryForm({
             {error}
           </p>
         )}
+        <ConflictReview error={error} projectId={projectId} updateId={existing?.id ?? "new-report"} accept={version => {setExpectedVersion(version);setError("");}} />
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={close}>
             Cancel

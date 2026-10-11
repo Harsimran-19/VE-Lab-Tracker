@@ -3245,3 +3245,25 @@ fieldset {
 @keyframes workspace-loading-spin { to { transform: rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .workspace-loading-spinner { animation: none; } }
 @media(max-width:700px) { .workspace-loading-header { padding: 0 16px; font-size: 18px; } .workspace-loading-content h1 { font-size: 24px; } }
+
+/* Project collaboration follows the existing table, form and disclosure layout. */
+.project-row-meta { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.project-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 18px 0; }
+.project-filters label { min-width: 180px; }
+.folder-row { min-width: 0; overflow-wrap: anywhere; }
+.project-people .directory-table td { overflow-wrap: anywhere; }
+.project-activity dd { overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 620px) { .project-filters { flex-direction: column; align-items: stretch; } }
+
+@media (max-width: 700px) { .project-people .directory-table td:last-child { grid-column: 1; grid-row: auto; padding-top: 10px; } }
+
+.project-organization { margin-top: 0; padding-top: 0; padding-bottom: 24px; border-top: 0; }
+.project-people .directory-table th:last-child, .project-people .directory-table td:last-child { width: auto; }
+
+.project-team-actions .text-action { white-space: nowrap; }
+
+.project-table .directory-name { overflow-wrap: anywhere; }
+.project-workspace .project-lead-line { overflow-wrap: anywhere; }
+.project-heading h1, .project-heading p, .project-breadcrumb .breadcrumb-current, .home-project-name { overflow-wrap: anywhere; }
+.project-breadcrumb > span:first-child, .project-breadcrumb > svg { flex-shrink: 0; }
+.project-breadcrumb .breadcrumb-current { min-width: 0; }

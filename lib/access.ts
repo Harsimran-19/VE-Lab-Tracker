@@ -1,4 +1,4 @@
-import type { Identity, Store, Workspace } from "./types";
+import type { Identity, Store, Workspace, Project } from "./types";
 import { dateInZone, reportingDeadline, startOfWeek } from "./calendar";
 import { smtpSettings } from "./mail-config";
 export class AppError extends Error {
@@ -33,6 +33,22 @@ export function requireAdmin(identity: Identity) {
   if (identity.role !== "admin")
     throw new AppError("Manager access is required.", 403);
 }
+// The existing workspace is one shared lab per configured spreadsheet. All
+// registered accounts retain read access; memberships grant project-scoped edits.
+export function canManageProject(store: Pick<Store, "memberships">, identity: Identity, project: Project) {
+  return identity.role === "admin" || store.memberships.some(m =>
+    m.projectId === project.id && m.personId === identity.personId &&
+    (project.leadId === m.personId || m.supervisor === true));
+}
+export function canEditProject(store: Pick<Store, "memberships">, identity: Identity, project: Project) {
+  return identity.role === "admin" || store.memberships.some(m => m.projectId === project.id && m.personId === identity.personId);
+}
+export function requireProjectAccess(store: Store, identity: Identity, project: Project, manage = false) {
+  if (!store.people.some(p => p.id === identity.personId && p.email.toLowerCase() === identity.email.toLowerCase()))
+    throw new AppError("This account is outside the lab.", 403);
+  if (!(manage ? canManageProject(store, identity, project) : canEditProject(store, identity, project)))
+    throw new AppError(manage ? "Only the project lead, supervisors or lab manager can manage this project." : "Join this project before editing its details.", 403);
+}
 export function requireSameOrigin(request: Request) {
   const expected = new URL(process.env.NEXTAUTH_URL || request.url).origin;
   if (request.headers.get("origin") !== expected)
@@ -44,10 +60,12 @@ export function workspaceFor(
   demo: boolean,
   now = new Date(),
 ): Workspace {
-  const { reminders, ...shared } = store;
+  const { reminders, revision: _revision, activities, ...shared } = store;
   const today = dateInZone(now, store.settings.timezone);
   return {
     ...shared,
+    revision: store.revision,
+    activities: store.projects.flatMap(p => activities.filter(a => a.projectId === p.id).slice(-20)),
     identity,
     demo,
     needsOnboarding:

@@ -4,6 +4,7 @@ import {
   PRIORITIES,
   PUBLICATION_STATUSES,
   WORKSTREAM_STATUSES,
+  PROJECT_TYPES,
 } from "./types";
 const text = (max: number) => z.string().trim().max(max);
 const id = text(100).min(1);
@@ -46,7 +47,7 @@ export const reportWorkstreamsSchema = z
 const projectSetupFields = {
   name: text(150).min(1, "Enter a project name."),
   goal: text(1000).min(1, "Describe the project’s goal."),
-  phase: z.enum(STAGES),
+  phase: z.union([z.literal(""), z.enum(STAGES)]),
   leadId: text(100),
   priority: z.union([z.literal(""), z.enum(PRIORITIES)]),
   methods: text(2000),
@@ -65,7 +66,7 @@ const milestoneMessage = {
   path: ["milestone"],
 };
 export const newProjectSchema = z
-  .object({ id: z.uuid(), ...projectSetupFields })
+  .object({ id: z.uuid(), ...projectSetupFields, type: z.enum(PROJECT_TYPES).optional() })
   .partial({
     phase: true,
     leadId: true,
@@ -83,7 +84,7 @@ export const newProjectSchema = z
   .refine(milestonePair, milestoneMessage);
 export const projectChangeSchema = z.discriminatedUnion("action", [
   z
-    .object({ id, action: z.literal("settings"), ...projectSetupFields })
+    .object({ id, action: z.literal("settings"), ...projectSetupFields, phase: text(150) })
     .strict()
     .refine(milestonePair, milestoneMessage),
   z
@@ -94,7 +95,7 @@ export const projectChangeSchema = z.discriminatedUnion("action", [
       goal: text(1000).min(1),
     })
     .strict(),
-  z.object({ id, action: z.literal("phase"), phase: z.enum(STAGES) }).strict(),
+  z.object({ id, action: z.literal("phase"), phase: projectSetupFields.phase }).strict(),
   z
     .object({
       id,
@@ -145,7 +146,20 @@ export const projectChangeSchema = z.discriminatedUnion("action", [
       collaboratorId: z.uuid(),
     })
     .strict(),
+  z.object({id, action: z.literal("classification"), type: z.union([z.literal(""), z.enum(PROJECT_TYPES)]), folderId: text(100)}).strict(),
 ]);
+export const teamChangeSchema = z.discriminatedUnion("action", [
+  z.object({ projectId: id, action: z.literal("add"), personId: id, contributor: z.boolean(), supervisor: z.boolean() }).strict(),
+  z.object({ projectId: id, action: z.literal("responsibilities"), personId: id, contributor: z.boolean(), supervisor: z.boolean() }).strict(),
+  z.object({ projectId: id, action: z.literal("lead"), personId: id }).strict(),
+  z.object({ projectId: id, action: z.literal("remove"), personId: id, replacementLeadId: text(100) }).strict(),
+  z.object({ projectId: id, action: z.literal("reporting"), researcherId: id, supervisorIds: z.array(id).max(100) }).strict(),
+]);
+export const folderChangeSchema = z.discriminatedUnion("action", [
+  z.object({ id: z.uuid(), action: z.literal("save"), name: text(150).min(1, "Name this folder."), description: text(1000) }).strict(),
+  z.object({ id, action: z.literal("remove") }).strict(),
+]);
+export const versionedRequestSchema = z.object({ expectedVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).passthrough();
 export const workstreamChangeSchema = z.discriminatedUnion("action", [
   z
     .object({

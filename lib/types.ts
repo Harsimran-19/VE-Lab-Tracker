@@ -18,6 +18,7 @@ export const PUBLICATION_STATUSES = [
   "Published",
 ] as const;
 export const PRIORITIES = ["Push", "Steady", "Background"] as const;
+export const PROJECT_TYPES = ["Research", "Startup", "Lab Management"] as const;
 export const WORKSTREAM_STATUSES = [
   "Not started",
   "In progress",
@@ -66,6 +67,12 @@ export interface Project {
   links?: ResourceLink[];
   workstreams?: Workstream[];
   collaborators?: Collaborator[];
+  type?: (typeof PROJECT_TYPES)[number] | "";
+  folderId?: string;
+  version?: number;
+  updatedAt?: string;
+  updatedBy?: string;
+  reporting?: { researcherId: string; supervisorId: string }[];
 }
 export interface Person {
   id: string;
@@ -81,6 +88,8 @@ export interface Membership {
   projectId: string;
   personId: string;
   joinedAt: string;
+  contributor?: boolean;
+  supervisor?: boolean;
 }
 export interface Update {
   id: string;
@@ -94,6 +103,23 @@ export interface Update {
   needsHelp: string;
   blockers: string;
   workstreams?: { id: string; name: string }[];
+  version?: number;
+}
+export interface Folder {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+}
+export interface Activity {
+  id: string;
+  projectId: string;
+  area: string;
+  action: string;
+  actorId: string;
+  actorName: string;
+  at: string;
+  changes: { label: string; before: string; after: string }[];
 }
 export interface Settings {
   id: string;
@@ -118,6 +144,9 @@ export interface Store {
   updates: Update[];
   settings: Settings;
   reminders: Reminder[];
+  folders: Folder[];
+  activities: Activity[];
+  revision: number;
 }
 export interface Identity {
   email: string;
@@ -150,5 +179,8 @@ export function emptyStore(): Store {
     updates: [],
     settings: { ...defaultSettings },
     reminders: [],
+    folders: [],
+    activities: [],
+    revision: 0,
   };
 }

@@ -1,4 +1,5 @@
-import { AppError, requireAdmin } from "./access";
+import { AppError, requireAdmin, requireProjectAccess } from "./access";
+import { STAGES } from "./types";
 import type { Identity, Project, Store } from "./types";
 import {
   newProjectSchema,
@@ -29,8 +30,6 @@ export function planProjectCreation(
     return existing;
   }
   return {
-    phase: "Idea",
-    leadId: "",
     priority: "Steady",
     methods: "",
     milestone: "",
@@ -41,6 +40,9 @@ export function planProjectCreation(
     altJournal: "",
     targetConference: "",
     ...input,
+    type: input.type ?? "Research",
+    phase: input.phase ?? (input.type && input.type !== "Research" ? "" : "Idea"),
+    leadId: input.leadId || identity.personId,
     state: "active",
   };
 }
@@ -50,14 +52,17 @@ export function planProjectChange(
   identity: Identity,
   raw: unknown,
 ): Project {
-  requireAdmin(identity);
   const input = projectChangeSchema.parse(raw);
   const existing = store.projects.find((p) => p.id === input.id);
   if (!existing) throw new AppError("Project not found.", 404);
+  const administrative = ["classification", "complete", "reopen", "pause"].includes(input.action) ||
+    ((input.action === "settings" || input.action === "details") && input.leadId !== (existing.leadId ?? ""));
+  requireProjectAccess(store, identity, existing, administrative);
   const project = { ...existing };
   switch (input.action) {
     case "settings": {
-      if (input.leadId && !store.people.some((p) => p.id === input.leadId))
+      if (input.phase && input.phase !== existing.phase && !STAGES.some(s => s === input.phase)) throw new AppError("Choose a supported research phase.");
+      if (input.leadId && input.leadId !== existing.leadId && !store.people.some((p) => p.id === input.leadId))
         throw new AppError("Choose a lead from the lab.");
       const { id: _id, action: _action, ...settings } = input;
       Object.assign(project, settings);
@@ -88,7 +93,7 @@ export function planProjectChange(
       project.state = "on-hold";
       break;
     case "details": {
-      if (input.leadId && !store.people.some((p) => p.id === input.leadId))
+      if (input.leadId && input.leadId !== existing.leadId && !store.people.some((p) => p.id === input.leadId))
         throw new AppError("Choose a lead from the lab.");
       const { id: _id, action: _action, ...details } = input;
       Object.assign(project, details);
@@ -106,10 +111,7 @@ export function planProjectChange(
         !list.some((c) => c.id === input.collaborator.id)
       )
         throw new AppError("This project already has 50 collaborators.");
-      project.collaborators = [
-        ...list.filter((c) => c.id !== input.collaborator.id),
-        input.collaborator,
-      ];
+      project.collaborators = list.some(c=>c.id===input.collaborator.id) ? list.map(c=>c.id===input.collaborator.id ? input.collaborator : c) : [...list,input.collaborator];
       break;
     }
     case "remove-collaborator":
@@ -117,6 +119,17 @@ export function planProjectChange(
         (c) => c.id !== input.collaboratorId,
       );
       break;
+    case "classification":
+      if (input.folderId && !store.folders.some(f => f.id === input.folderId))
+        throw new AppError("Choose a folder from this lab.");
+      project.type = input.type;
+      project.folderId = input.folderId;
+      break;
+  }
+  if (project.leadId !== existing.leadId) {
+    if (existing.leadId && !project.leadId) throw new AppError("Choose a replacement lead.");
+    if (project.leadId && !store.memberships.some(m => m.projectId === project.id && m.personId === project.leadId))
+      throw new AppError("Add the lead to this project’s team first.");
   }
   return project;
 }
@@ -129,6 +142,7 @@ export function planWorkstreamChange(
   const input = workstreamChangeSchema.parse(raw);
   const project = store.projects.find((p) => p.id === input.projectId);
   if (!project) throw new AppError("Project not found.", 404);
+  requireProjectAccess(store, identity, project);
   if (project.state !== "active")
     throw new AppError(
       "Reopen this project before changing responsibilities.",
@@ -136,7 +150,7 @@ export function planWorkstreamChange(
     );
   const list = project.workstreams ?? [];
   if (input.action === "save") {
-    requireAdmin(identity);
+    // Ordinary assigned members can update progress, including responsibilities.
     if (
       !store.memberships.some(
         (m) =>
@@ -149,26 +163,18 @@ export function planWorkstreamChange(
     const existing = list.find((w) => w.id === input.workstream.id);
     return {
       ...project,
-      workstreams: [
-        ...list.filter((w) => w.id !== input.workstream.id),
-        { ...input.workstream, archived: existing?.archived ?? false },
-      ],
+      workstreams: existing ? list.map(w=>w.id===input.workstream.id ? {...input.workstream,archived:existing.archived ?? false} : w) : [...list,{...input.workstream,archived:false}],
     };
   }
   const stream = list.find((w) => w.id === input.workstreamId);
   if (!stream) throw new AppError("Responsibility not found.", 404);
   if (input.action === "status") {
-    if (identity.role !== "admin" && stream.ownerId !== identity.personId)
-      throw new AppError(
-        "Only the owner or manager can change this status.",
-        403,
-      );
     if (stream.archived)
       throw new AppError(
         "Restore this responsibility before changing its status.",
         409,
       );
-  } else requireAdmin(identity);
+  }
   return {
     ...project,
     workstreams: list.map((w) =>

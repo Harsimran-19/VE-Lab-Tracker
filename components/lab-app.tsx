@@ -8,6 +8,9 @@ import {
   PencilSimpleIcon as Pencil, PlusIcon as Plus, MagnifyingGlassIcon as Search,
   UserIcon as UserRound,
 } from "@phosphor-icons/react";
+import { PROJECT_TYPES } from "@/lib/types";
+import { canEditProject, canManageProject } from "@/lib/access";
+import { ProjectFolders } from "./project-folders";
 import type { Project, Update, Workspace } from "@/lib/types";
 import { latestReports, reportDate, shortDate } from "@/lib/format";
 import { mutate, ProjectForm, type ProjectAction } from "./forms";
@@ -42,6 +45,8 @@ export function LabApp({
   const [data, setData] = useState(initial),
     [search, setSearch] = useState(""),
     [onlyMine, setOnlyMine] = useState(false),
+    [typeFilter,setTypeFilter] = useState(""),
+    [folderFilter,setFolderFilter] = useState(""),
     [completed, setCompleted] = useState(
       initial.projects.length > 0 &&
         !initial.projects.some((p) => p.state === "active") &&
@@ -75,6 +80,8 @@ export function LabApp({
     (p) =>
       p.state === (onHold ? "on-hold" : completed ? "completed" : "active") &&
       (!onlyMine || ownIds.has(p.id)) &&
+      (!typeFilter || (typeFilter === "unclassified" ? !p.type : p.type === typeFilter)) &&
+      (!folderFilter || (folderFilter === "ungrouped" ? !p.folderId : p.folderId === folderFilter)) &&
       `${p.name} ${p.fullTitle ?? ""} ${p.goal}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -187,9 +194,9 @@ export function LabApp({
         )}
         <main id="workspace-main" className={`lab-main${screen === "dashboard" ? " home-main" : ""}`}>
           {screen === "project" && (
-            <Link className="breadcrumb" href="/projects">
-              Projects <ChevronRight size={14} />
-              {chosen?.name}
+            <Link className="breadcrumb project-breadcrumb" href="/projects">
+              <span>Projects</span><ChevronRight size={14} />
+              <span className="breadcrumb-current">{chosen?.name}</span>
             </Link>
           )}
           {screen === "member" && (
@@ -198,13 +205,13 @@ export function LabApp({
               {person?.name}
             </Link>
           )}
-          {screen !== "dashboard" && <div className="page-heading">
+          {screen !== "dashboard" && <div className={`page-heading${screen === "project" ? " project-heading" : ""}`}>
             <div>
 
               <h1>{screen === "member" && <UserIcon size={34} aria-hidden="true" />}{heading}</h1>
               <p>
                 {screen === "projects"
-                    ? `${data.projects.length} research ${data.projects.length === 1 ? "project" : "projects"}`
+                    ? `${data.projects.length} ${data.projects.length === 1 ? "project" : "projects"}`
                     : screen === "team"
                       ? "Find the people behind the work."
                       : screen === "member"
@@ -224,7 +231,7 @@ export function LabApp({
                     New project
                   </button>
                 )}
-              {screen === "project" && chosen && manager && <button className="button secondary" onClick={() => setEditing({ project: chosen, action: "settings" })}>Project settings</button>}
+              {screen === "project" && chosen && canEditProject(data,data.identity,chosen) && <button className="button secondary" onClick={() => setEditing({ project: chosen, action: "settings" })}>Project settings</button>}
               {screen === "project" &&
                 chosen &&
                 (chosen.state === "active" ? (
@@ -277,7 +284,7 @@ export function LabApp({
               createProject={() => setEditing({ action: "create" })}
               changeStatus={async (projectId, workstreamId, status) => {
                 await action(async () => {
-                  await mutate("/api/workstreams", { action: "status", projectId, workstreamId, status }, "PATCH");
+                  await mutate("/api/workstreams", { action: "status", projectId, workstreamId, status, expectedVersion:data.projects.find(p=>p.id===projectId)?.version ?? 0 }, "PATCH");
                   await refresh();
                   setNotice(status === "Done" ? "Responsibility completed." : "Responsibility reopened.");
                 });
@@ -292,11 +299,13 @@ export function LabApp({
                   {[{label:"Active",state:"active"},{label:"Completed",state:"completed"},{label:"Paused",state:"on-hold"}].map(({label,state}) => <button key={state} className={(onHold ? "on-hold" : completed ? "completed" : "active") === state ? "selected" : ""} aria-pressed={(onHold ? "on-hold" : completed ? "completed" : "active") === state} onClick={() => {setCompleted(state === "completed");setOnHold(state === "on-hold");}}>{label}</button>)}
                 </div>
               </div>
+              <div className="project-filters"><label>Project type<select aria-label="Project type" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}><option value="">All types</option>{PROJECT_TYPES.map(t=><option key={t}>{t}</option>)}<option value="unclassified">Unclassified</option></select></label><label>Folder<select aria-label="Folder" value={folderFilter} onChange={e=>setFolderFilter(e.target.value)}><option value="">All folders</option><option value="ungrouped">Ungrouped</option>{data.folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>{(typeFilter || folderFilter) && <button className="text-action" onClick={()=>{setTypeFilter("");setFolderFilter("");}}>Clear filters</button>}</div>
+              <ProjectFolders data={data} saved={refresh} browse={setFolderFilter} />
               {!manager && own.length > 0 && <label className="check-label scope-toggle"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />Only my projects</label>}
               {filtered.length > 0 ? <ProjectTable projects={[...filtered].sort((a,b) => a.name.localeCompare(b.name))} data={data} /> : <section className="empty-state"><h2>{!data.projects.length ? "No projects yet" : search ? "No matching projects" : "No projects in this view"}</h2><p>{!data.projects.length ? manager ? "Create a project with a clear goal to get started." : "Projects will appear when the manager adds them." : "Try another search or project filter."}</p></section>}
             </>
           )}
-          {screen === "project" && chosen && <ProjectWorkspace project={chosen} data={data} busy={busy} edit={(action) => setEditing({ project: chosen, action })} saved={refresh} reportCard={reportCard} clearMilestone={async () => {await action(async () => {await mutate("/api/projects", {id:chosen.id,action:"clear-milestone"}, "PATCH");await refresh();setNotice("Milestone removed.");});}} />}
+          {screen === "project" && chosen && <ProjectWorkspace project={chosen} data={data} busy={busy} edit={(action) => setEditing({ project: chosen, action })} saved={refresh} reportCard={reportCard} clearMilestone={async () => {await action(async () => {await mutate("/api/projects", {id:chosen.id,action:"clear-milestone",expectedVersion:chosen.version ?? 0}, "PATCH");await refresh();setNotice("Milestone removed.");});}} />}
           {screen === "team" && <TeamDirectory data={data} />}
           {screen === "member" && person && (
             <div className="member-workspace">
@@ -400,7 +409,9 @@ export function LabApp({
       )}
       {editing && (
         <ProjectForm
-          people={data.people}
+          creatorId={data.identity.personId}
+          canManage={!editing.project || canManageProject(data,data.identity,editing.project)}
+          people={editing.project ? data.people.filter(p=>data.memberships.some(m=>m.projectId===editing.project!.id && m.personId===p.id)) : data.people}
           project={editing.project}
           action={editing.action}
           close={() => setEditing(null)}

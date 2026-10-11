@@ -29,7 +29,7 @@ For cloud sample testing, keep `NEXTAUTH_URL=http://localhost:3000` and `DEMO_MO
 
 ## Step 2 — Create a new Google Sheet
 
-**Already connected a Sheet?** Keep its `GOOGLE_SHEET_ID` and skip creating a new one. The app will use separate, empty Lab tabs in that spreadsheet.
+**Already connected a Sheet?** Keep its `GOOGLE_SHEET_ID` and skip creating a new one. Existing Lab tabs and records are retained. Original non-lab tracker tabs are still ignored.
 
 1. Open [Google Sheets](https://sheets.google.com) and create a **blank spreadsheet**.
 2. Name it **VE Lab Tracker — App**. Leave its blank tab alone.
@@ -146,7 +146,20 @@ openssl rand -base64 32
 
 Paste only that output line, not the command. This requires no local file creation. Keep the output private.
 
-## Step 7 — Sign in and start a fresh lab
+## Step 6b — Enable safe collaborative saves
+
+Before releasing this version, complete [the locked Sheets writer setup](COLLABORATION_SETUP.md#deployment-time-setup-not-performed-by-this-change). Google Sheets remains the database; the shared writer makes version checks, project changes and activity logging atomic across server instances.
+
+Deploy the supplied bound Apps Script using your spreadsheet owner's Google account, enable its advanced Sheets API service, and configure its private Script Properties as described in that guide. Set these additional private variables in Vercel:
+
+| Variable | Value |
+| --- | --- |
+| `SHEETS_TRANSACTION_URL` | The Apps Script web app's `/exec` URL |
+| `SHEETS_TRANSACTION_KEY` | The same private secret as the script's `TRANSACTION_KEY` |
+
+Back up the spreadsheet and stop old writers during cutover. Use one writer deployment for all app instances. Without this setup, production project saves fail safely; login and reads alone do not verify that collaboration works.
+
+## Step 7 — Sign in and verify the lab
 
 | Variable                       | Value to copy from                |
 | ------------------------------ | --------------------------------- |
@@ -161,15 +174,15 @@ Paste only that output line, not the command. This requires no local file creati
 
 1. Save the variables in Vercel and **redeploy**.
 2. Sign in as `harsimran1869@gmail.com` (or your configured manager email).
-3. The lab starts empty. Click **Create project** and enter only its **Project name** and **Goal**.
-4. Click **Share website** and send the link to your team. Publish the Google OAuth audience **In production** before inviting members; during initial testing, add them under Google's **Test users**.
+3. Existing Lab records remain available; a new spreadsheet starts empty. In **Projects**, click **New project** and create a clearly named test project using **Project name**, **Goal** and **Project type**.
+4. Copy the website's URL from your browser to share it with your team. Publish the Google OAuth audience **In production** before inviting members; during initial testing, add them under Google's **Test users**.
 5. Members sign in with Google, confirm their name, and choose their projects. No roster selection, account approval or manual registration is needed.
 6. A member clicks **Write update**, enters accomplishments and next step, and checks **I need help** only when relevant. Their name, date and week are automatic.
 7. Saving again edits that member's current-week report. Earlier weeks remain available in the project; nobody edits another member's report.
-8. The manager sees reporting gaps and help requests on **Lab overview**. Research phase and milestone changes happen inside the relevant project.
-9. Under **Account & settings**, set the reporting day, time and lab timezone once. Defaults: Friday, 18:00, Asia/Kolkata.
+8. On **Home**, expand **Lab reporting** to review team reports and help requests. Research phase and milestone changes happen inside the relevant project.
+9. Under **Account**, set the reporting day, time and lab timezone once. Defaults: Friday, 18:00, Asia/Kolkata.
 
-The app automatically creates six clean tabs: **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries**. They start empty except for actual Google signups and the reporting schedule. Old tracker tabs, names, projects and reports are never imported or displayed. Use a new blank spreadsheet from Step 2 if desired; an already connected workbook can also host these separate fresh tabs without changing its old data. There is no initialization or reset button to click.
+The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries, LabFolders, LabActivity, LabRevision** when needed. Supported existing Lab schemas receive additive headers, preserving their records. Original non-lab tracker data is not imported. No reset is needed. Follow [the collaborative testing walkthrough](COLLABORATION_SETUP.md#testing-the-deployed-app) before inviting the lab.
 
 <a id="email-reminders"></a>
 
@@ -243,5 +256,6 @@ The quotes around `GOOGLE_PRIVATE_KEY` are for an **ENV file**. When entering th
 | App cannot edit the Sheet            | Step 3: enable Sheets API; Step 4: share the Sheet with `client_email` as Editor                            |
 | Spreadsheet not found                | Step 2: copy only the ID; Step 4: check sharing                                                             |
 | Invalid private key                  | Step 4: copy the entire `private_key` value, preserving header, footer, and newlines                        |
-| Existing app Sheet / changed headers | Restore the six Lab tab headers from `lib/sheets.ts`; never overwrite existing records                      |
+| Existing app Sheet / changed headers | Compare against the supported headers in `lib/sheets.ts`; never overwrite existing records                |
+| Saves say the locked writer is required | Complete Step 6b, set both writer variables in Production and redeploy                                  |
 | Deadline emails not arriving         | Step 8: Zoho sender + password + cron secret, redeploy, test email, then Cron Jobs                    |

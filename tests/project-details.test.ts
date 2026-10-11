@@ -51,7 +51,7 @@ test("project creation saves its initial direction, lead and deadline together",
     targetConference: "",
   };
   const project = planProjectCreation(s, manager, input);
-  assert.deepEqual(project, { ...input, state: "active" });
+  assert.deepEqual(project, { ...input, type: "Research", state: "active" });
   s.projects.push(project);
   assert.deepEqual(planProjectCreation(s, manager, input), project);
   assert.throws(
@@ -85,6 +85,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
   assert.equal(created.phase, "Idea");
   assert.equal(created.priority, "Steady");
   assert.equal(created.milestone, "");
+  for (const personId of [member.personId,manager.personId]) s.memberships.push({id:`new-${personId}`,projectId:created.id,personId,joinedAt:now.toISOString()});
   const links = [{ label: "Research folder", url: "https://example.com" }];
   s.projects.push({
     ...created,
@@ -93,7 +94,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
     notes: "Keep this context",
     state: "on-hold",
   });
-  const { state: _state, ...fields } = created;
+  const { state: _state, type: _type, ...fields } = created;
   const changed = planProjectChange(s, manager, {
     ...fields,
     action: "settings",
@@ -115,6 +116,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
     links: _links,
     notes: _notes,
     state: _held,
+    type: _changedType,
     ...setup
   } = changed;
   const cleared = planProjectChange(s, manager, {
@@ -125,10 +127,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
   });
   assert.equal(cleared.milestone, "");
   assert.equal(cleared.due, "");
-  assert.throws(
-    () => planProjectChange(s, member, { ...setup, action: "settings" }),
-    /Manager access/,
-  );
+  assert.throws(() => planProjectChange(s, member, { ...setup, action: "settings" }), /project lead/);
   assert.throws(
     () =>
       planProjectChange(s, manager, {
@@ -146,17 +145,17 @@ test("research details are optional, lead must be real, and resource links must 
     id: s.projects[0].id,
     action: "details",
     fullTitle: "Pilot research study",
-    leadId: manager.personId,
+    leadId: member.personId,
     priority: "Push",
     methods: "Interviews",
     notes: "Context",
     links: [{ label: "Dataset", url: "https://example.com/data" }],
   };
   const project = planProjectChange(s, manager, details);
-  assert.equal(project.leadId, manager.personId);
+  assert.equal(project.leadId, member.personId);
   assert.equal(project.goal, s.projects[0].goal);
   assert.equal(s.memberships.length, 1);
-  assert.throws(() => planProjectChange(s, member, details), /Manager access/);
+  assert.throws(() => planProjectChange(s, member, details), /project lead/);
   assert.throws(
     () => planProjectChange(s, manager, { ...details, leadId: "missing" }),
     /lead/,
@@ -213,7 +212,7 @@ test("publication status is separate from research phase and collaborators need 
   );
 });
 
-test("managers assign responsibilities only to members of that project", () => {
+test("assigned members manage progress responsibilities only within that project", () => {
   const s = fixture();
   const body = {
     projectId: s.projects[0].id,
@@ -224,7 +223,7 @@ test("managers assign responsibilities only to members of that project", () => {
     planWorkstreamChange(s, manager, body).workstreams?.[0].ownerId,
     member.personId,
   );
-  assert.throws(() => planWorkstreamChange(s, member, body), /Manager access/);
+  assert.equal(planWorkstreamChange(s, member, body).workstreams?.[0].ownerId, member.personId);
   assert.throws(
     () =>
       planWorkstreamChange(s, manager, {
@@ -235,7 +234,7 @@ test("managers assign responsibilities only to members of that project", () => {
   );
 });
 
-test("owners can update only their own status; archive is reversible", () => {
+test("assigned members can update progress; archive is reversible", () => {
   const s = withStream();
   const body = {
     projectId: s.projects[0].id,
@@ -250,7 +249,7 @@ test("owners can update only their own status; archive is reversible", () => {
   assert.throws(
     () =>
       planWorkstreamChange(s, { ...member, personId: "someone-else" }, body),
-    /owner or manager/,
+    /outside the lab/,
   );
   s.projects[0] = planWorkstreamChange(s, manager, {
     projectId: s.projects[0].id,

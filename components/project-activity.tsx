@@ -1,0 +1,10 @@
+"use client";
+import { useState } from "react";
+import type { Activity, Project, Workspace } from "@/lib/types";
+import { reportDate } from "@/lib/format";
+export function ProjectActivity({ project, data }: {project:Project;data:Workspace}) {
+  const initial=data.activities.filter(a=>a.projectId===project.id).reverse();
+  const [older,setOlder]=useState<Activity[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[more,setMore]=useState(initial.length===20);
+  const rows=[...initial,...older.filter(a=>!initial.some(i=>i.id===a.id))];
+  return <section className="project-updates project-activity"><div className="section-heading"><div><h2>Activity history</h2><p className="section-copy">Successful changes to this project, its team and progress.</p></div></div><div className="update-feed">{rows.map(a=><article className="update-card" key={a.id}><div className="update-card-head"><div><strong>{a.actorName}</strong><p><time dateTime={a.at} title={a.at}>{reportDate(a.at,data.settings.timezone)}</time></p></div></div><p>{a.action} · {a.area}</p><details><summary>View changes</summary><p className="muted">Recorded at <time dateTime={a.at}>{a.at}</time></p><dl className="research-details">{a.changes.map((c,i)=><div key={i}><dt>{c.label}</dt><dd>{c.before} → {c.after}</dd></div>)}</dl></details></article>)}{!rows.length && <p className="quiet-empty">No recorded activity yet. Earlier changes have no recorded author.</p>}</div>{error && <p className="error" role="alert">{error}</p>}{more && <button className="button secondary load-more" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{const response=await fetch(`/api/activity?${new URLSearchParams({projectId:project.id,before:rows.at(-1)?.id ?? ""})}`,{cache:"no-store"});const result=await response.json();if(!response.ok)throw new Error(result.error);setOlder([...older,...result.activities]);setMore(result.hasMore);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>{busy ? "Loading…" : "Load more activity"}</button>}</section>;
+}

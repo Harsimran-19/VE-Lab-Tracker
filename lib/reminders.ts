@@ -10,6 +10,7 @@ import {
   localDateTime,
   reportingDeadline,
   expectedThisWeek,
+  membershipJoinedBefore,
 } from "./calendar";
 import { latestReports } from "./format";
 import type { Reminder, Store } from "./types";
@@ -77,8 +78,7 @@ export function planReminders(
   const summaryExpected = store.memberships.filter(
     (m) =>
       active.some((p) => p.id === m.projectId) &&
-      (localDateTime(new Date(m.joinedAt), settings.timezone) <=
-        `${summaryDate}T${due.time}` ||
+      (membershipJoinedBefore(m,settings.timezone,`${summaryDate}T${due.time}`) ||
         store.updates.some(
           (u) =>
             u.personId === m.personId &&
@@ -215,7 +215,8 @@ export function planReminders(
           !w.archived &&
           w.status !== "Done" &&
           w.due &&
-          w.ownerId === person.id,
+          w.ownerId === person.id &&
+          store.memberships.some(m=>m.projectId===project.id && m.personId===person.id),
       )) {
         const days = dayDifference(workstream.due, today);
         if (days !== 0 && days !== 1) continue;

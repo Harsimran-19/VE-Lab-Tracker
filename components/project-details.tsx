@@ -13,6 +13,8 @@ import {
 } from "@/lib/types";
 import { dayDifference } from "@/lib/calendar";
 import { shortDate } from "@/lib/format";
+import { canEditProject, canManageProject } from "@/lib/access";
+import { ConflictReview } from "./conflict-review";
 import { mutate } from "./forms";
 import { Modal } from "./modal";
 
@@ -28,7 +30,7 @@ export function ProjectContext({
   saved,
   mode,
 }: Props & { mode: "details" | "responsibilities" | "resources" | "publication" | "people" }) {
-  const manager = data.identity.role === "admin";
+  const manager = canEditProject(data,data.identity,project);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -43,12 +45,12 @@ export function ProjectContext({
     project.notes ||
     project.links?.length,
   );
-  async function update(body: unknown) {
+  async function update(body: Record<string,unknown>) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await mutate("/api/workstreams", body, "PATCH");
+      await mutate("/api/workstreams", {...body, expectedVersion:project.version ?? 0}, "PATCH");
       await saved();
       setNotice("Responsibility updated.");
     } catch (e) {
@@ -72,7 +74,7 @@ export function ProjectContext({
       {(mode === "details" || mode === "resources") && (hasDetails || manager) && (
         <details open className="panel context-disclosure">
           <summary>
-            <span>Research details</span>
+            <span>{project.type === "Research" ? "Research details" : "Project details"}</span>
             <small>Title, methods and resources</small>
           </summary>
           <div className="context-body">
@@ -117,7 +119,7 @@ export function ProjectContext({
                 className="text-action"
                 onClick={() => setEditor({ kind: "details" })}
               >
-                Edit research details
+                Edit project details
               </button>
             )}
           </div>
@@ -156,7 +158,7 @@ export function ProjectContext({
               const owner = data.people.find((p) => p.id === w.ownerId);
               const canEditStatus =
                 project.state === "active" &&
-                (manager || w.ownerId === data.identity.personId);
+                manager;
               const overdue =
                 w.due &&
                 w.status !== "Done" &&
@@ -407,6 +409,7 @@ function ContextEditor({
   close,
   saved,
 }: Props & { editor: Editor; close: () => void }) {
+  const [expectedVersion,setExpectedVersion] = useState(project.version ?? 0);
   const [recordId] = useState(
     editor.kind === "workstream" || editor.kind === "collaborator"
       ? (editor.value?.id ?? crypto.randomUUID())
@@ -479,10 +482,11 @@ function ContextEditor({
             removing
               ? {
                   projectId: project.id,
+                  expectedVersion,
                   action: "archive",
                   workstreamId: recordId,
                 }
-              : { projectId: project.id, action: "save", workstream: record },
+              : { projectId: project.id, action: "save", workstream: record, expectedVersion },
             "PATCH",
           );
         } else {
@@ -498,7 +502,7 @@ function ContextEditor({
                       collaboratorId: recordId,
                     }
                   : { id: project.id, action: "collaborator", collaborator };
-          await mutate("/api/projects", body, "PATCH");
+          await mutate("/api/projects", { ...body, expectedVersion }, "PATCH");
         }
         setConfirmed(true);
       }
@@ -541,13 +545,14 @@ function ContextEditor({
                     Project lead
                     <select
                       aria-label="Project lead"
+                      disabled={!canManageProject(data,data.identity,project)}
                       value={details.leadId}
                       onChange={(e) =>
                         setDetails({ ...details, leadId: e.target.value })
                       }
                     >
                       <option value="">No lead set</option>
-                      {data.people.map((p) => (
+                      {members.map((p) => (
                         <option value={p.id} key={p.id}>
                           {p.name}
                         </option>
@@ -898,6 +903,7 @@ function ContextEditor({
             {error}
           </p>
         )}
+        <ConflictReview error={error} projectId={project.id} accept={v=>{setExpectedVersion(v);setError("");}} />
         <div className="modal-actions">
           {!removing &&
             !confirmed &&

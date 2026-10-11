@@ -62,6 +62,10 @@ export function reportingDeadline(
       `${date}T${settings.reportingTime}`,
   };
 }
+export function membershipJoinedBefore(membership: Pick<import("./types").Membership,"joinedAt">, timezone: string, cutoff: string) {
+  const joined = new Date(membership.joinedAt);
+  return Boolean(membership.joinedAt) && Number.isFinite(joined.getTime()) && localDateTime(joined, timezone) <= cutoff;
+}
 export function expectedThisWeek(
   membership: import("./types").Membership,
   store: Pick<import("./types").Store, "updates" | "settings">,
@@ -70,8 +74,7 @@ export function expectedThisWeek(
   const due = reportingDeadline(store.settings, now);
   const week = startOfWeek(dateInZone(now, store.settings.timezone));
   return (
-    localDateTime(new Date(membership.joinedAt), store.settings.timezone) <=
-      `${due.date}T${due.time}` ||
+    membershipJoinedBefore(membership,store.settings.timezone,`${due.date}T${due.time}`) ||
     store.updates.some(
       (u) =>
         u.personId === membership.personId &&
