@@ -26,8 +26,10 @@ process-local mutex would not protect separate Vercel instances.
    editor access to trusted operators; manual edits bypass application policies.
 5. Release the application and inspect a safe test project before allowing live
    writes. Deploying the Next.js app does not configure this script or its
-   credentials. Without these variables the existing lab remains readable, but
-   project mutations fail with a setup message instead of making unsafe writes.
+   credentials. Without these variables, project changes are written directly
+   by the app's service account in one atomic Sheets batch after a revision
+   check. That keeps the lab usable, but cannot serialize two saves landing at
+   the same moment on separate server instances; configure the writer for that.
 
 ## Additive migration and rollback
 
@@ -88,8 +90,8 @@ A lead, supervisor or manager opens each related project and chooses **Change
 type or folder** to select the same folder. The folder card shows the project
 count; selecting it filters the list to those projects. Grouping preserves each
 project’s separate identity, team and history. No projects are merged or deleted.
-If joining or saving shows a storage setup error, the deployed Apps Script writer
-described above must be configured; that error is distinct from membership access.
+Joining and saving work without the Apps Script writer; configuring it adds
+cross-instance locking. A storage error is distinct from membership access.
 
 ### Full manager and member rehearsal
 

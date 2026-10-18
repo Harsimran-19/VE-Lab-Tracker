@@ -1,6 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { JWT } from "google-auth-library";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { cells, TABLES } from "../lib/sheets";
@@ -8,10 +9,10 @@ import { fixture, member, now } from "./fixture";
 import { upgradeStore, recordChanges } from "../lib/collaboration";
 import { commitSheetTransaction } from "../lib/sheet-transactions";
 const key="test-writer-secret-with-at-least-32-characters";
-const originalFetch=globalThis.fetch;
-const envKeys=["SHEETS_TRANSACTION_KEY","SHEETS_TRANSACTION_URL","GOOGLE_SHEET_ID"];
+const originalFetch=globalThis.fetch,originalToken=JWT.prototype.getAccessToken;
+const envKeys=["SHEETS_TRANSACTION_KEY","SHEETS_TRANSACTION_URL","GOOGLE_SHEET_ID","GOOGLE_SERVICE_ACCOUNT_EMAIL","GOOGLE_PRIVATE_KEY"];
 const saved=Object.fromEntries(envKeys.map(k=>[k,process.env[k]]));
-after(()=>{globalThis.fetch=originalFetch;for(const k of envKeys){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
+after(()=>{globalThis.fetch=originalFetch;JWT.prototype.getAccessToken=originalToken;for(const k of envKeys){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
 function writer() {
   const tables=new Map<string,string[][]>(Object.entries(TABLES).map(([name,headers])=>[name,[[...headers]]]));
   tables.set("LabRevision",[["id","version"],["lab","0"]]);
@@ -68,4 +69,33 @@ test("new transactions cannot reuse or alter a historical activity ID",async()=>
   const w=writer();configure(w);const {before,next}=states();await commitSheetTransaction(before,next);
   const following=structuredClone(next);following.projects[0].name="Another change";recordChanges(next,following,member,"Project","Updated project",now);following.activities.at(-1)!.id=next.activities[0].id;
   await assert.rejects(commitSheetTransaction(next,following),/could not confirm/);assert.equal(w.commits(),1);assert.equal(w.tables.get("LabProjects")![1][1],"Audited change");assert.equal(w.tables.get("LabActivity")!.length,2);
+});
+function sheetsApi(){
+  const tables=new Map<string,string[][]>(Object.entries(TABLES).map(([name,headers])=>[name,[[...headers]]]));
+  tables.set("LabRevision",[["id","version"],["lab","0"]]);
+  const tabs=[...tables.keys()];let commits=0;
+  for(const k of envKeys)delete process.env[k];
+  Object.assign(process.env,{GOOGLE_SHEET_ID:"test-sheet",GOOGLE_SERVICE_ACCOUNT_EMAIL:"unit@test.invalid",GOOGLE_PRIVATE_KEY:"not-a-real-key"});
+  JWT.prototype.getAccessToken=async()=>({token:"unit-test-token",res:null});
+  globalThis.fetch=async(input,init)=>{
+    const url=decodeURIComponent(String(input));
+    if(url.includes("?fields="))return new Response(JSON.stringify({sheets:tabs.map((title,sheetId)=>({properties:{sheetId,title,gridProperties:{rowCount:1000}}}))}));
+    if(url.includes("values:batchGet"))return new Response(JSON.stringify({valueRanges:[...url.matchAll(/ranges='([^']+)'/g)].map(m=>({values:tables.get(m[1])}))}));
+    if(url.endsWith(":batchUpdate")){
+      for(const {updateCells:u} of JSON.parse(String(init?.body)).requests){if(!u)continue;const data=tables.get(tabs[u.range.sheetId])!;
+        for(let r=u.range.startRowIndex;r<u.range.endRowIndex;r++){data[r]??=[];for(let c=0;c<u.range.endColumnIndex;c++)data[r][c]=u.rows[r-u.range.startRowIndex]?.values[c]?.userEnteredValue.stringValue ?? "";}}
+      commits++;return new Response("{}");
+    }
+    throw new Error("Unexpected storage request "+url);
+  };
+  return {tables,commits:()=>commits};
+}
+test("without the locked writer, saves commit directly in one batch instead of blocking members",async()=>{
+  const s=sheetsApi();const {before,next}=states();await commitSheetTransaction(before,next);
+  assert.equal(s.commits(),1);assert.equal(s.tables.get("LabProjects")![1][1],"Audited change");assert.equal(s.tables.get("LabActivity")!.length,2);assert.equal(s.tables.get("LabRevision")![1][1],"1");
+  await assert.rejects(commitSheetTransaction(before,next),/while saving/);assert.equal(s.commits(),1);assert.equal(s.tables.get("LabActivity")!.length,2);
+});
+test("the direct fallback refuses duplicate IDs without writing",async()=>{
+  const s=sheetsApi();const {before,next}=states();next.memberships.push({...next.memberships[0]});
+  await assert.rejects(commitSheetTransaction(before,next),/not applied/);assert.equal(s.commits(),0);
 });
