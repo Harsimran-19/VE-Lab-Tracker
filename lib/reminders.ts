@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { AppError } from "./access";
+import { AppError, isLive } from "./access";
 import { mailConfiguration, sendMail } from "./mail";
 import {
   dateInZone,
@@ -56,7 +56,7 @@ export function planReminders(
     week = startOfWeek(today),
     due = reportingDeadline(settings, now),
     localNow = localDateTime(now, settings.timezone);
-  const active = store.projects.filter((p) => p.state === "active"),
+  const active = store.projects.filter(isLive),
     expected = store.memberships.filter(
       (m) =>
         active.some((p) => p.id === m.projectId) &&

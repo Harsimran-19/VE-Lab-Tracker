@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { AppError } from "./access";
+import { AppError, isApproved } from "./access";
 import { dateInZone, startOfWeek } from "./calendar";
 import type { Identity, Store, Update } from "./types";
 import { entrySchema } from "./schema";
@@ -25,6 +25,11 @@ export function planEntry(
   if (project.state !== "active")
     throw new AppError(
       "This project is not active. Weekly reporting has stopped.",
+      409,
+    );
+  if (!isApproved(project))
+    throw new AppError(
+      "Weekly reporting starts once this project is approved.",
       409,
     );
   if (
@@ -71,19 +76,30 @@ export function planEntry(
             );
           return { id: stream.id, name: stream.name };
         });
+  const piMeeting = input.piMeeting ?? existing?.piMeeting ?? "",
+    collaboratorMeeting = input.collaboratorMeeting ?? existing?.collaboratorMeeting ?? "";
   const values = {
     progress: input.progress,
     nextPlan: input.nextPlan,
     needsHelp: String(input.needsHelp),
     blockers: input.needsHelp ? input.blockers : "",
+    hours: input.hours === undefined ? existing?.hours ?? "" : String(input.hours),
+    piMeeting,
+    piMeetingDate: piMeeting === "scheduled" || piMeeting === "held" ? input.piMeetingDate ?? existing?.piMeetingDate ?? "" : "",
+    collaboratorMeeting,
+    collaboratorMeetingDate: collaboratorMeeting === "scheduled" || collaboratorMeeting === "held" ? input.collaboratorMeetingDate ?? existing?.collaboratorMeetingDate ?? "" : "",
+    collaboratorNames: collaboratorMeeting === "scheduled" || collaboratorMeeting === "held" ? input.collaboratorNames ?? existing?.collaboratorNames ?? "" : "",
+    meetingNotes: input.meetingNotes ?? existing?.meetingNotes ?? "",
   };
+  const files = input.files ?? existing?.files ?? [];
   if (
     existing &&
     Object.entries(values).every(
       ([k, v]) => existing[k as keyof Update] === v,
     ) &&
     JSON.stringify(existing.workstreams ?? []) ===
-      JSON.stringify(selections ?? [])
+      JSON.stringify(selections ?? []) &&
+    JSON.stringify(existing.files ?? []) === JSON.stringify(files)
   )
     return existing;
   return {
@@ -94,6 +110,7 @@ export function planEntry(
     projectId: project.id,
     personId: identity.personId,
     ...values,
+    files,
     ...(selections?.length ? { workstreams: selections } : { workstreams: [] }),
   };
 }

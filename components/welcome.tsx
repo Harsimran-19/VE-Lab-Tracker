@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import { workspaceFontClasses } from "./workspace-chrome";
 import type { Workspace } from "@/lib/types";
 import { mutate } from "./forms";
+import { isLive } from "@/lib/access";
 export function Welcome({
   data,
   saved,
@@ -22,14 +23,14 @@ export function Welcome({
           (m) =>
             m.personId === data.identity.personId &&
             data.projects.some(
-              (p) => p.id === m.projectId && p.state === "active",
+              (p) => p.id === m.projectId && isLive(p),
             ),
         )
         .map((m) => m.projectId),
     ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const available = data.projects.filter((p) => p.state === "active");
+  const available = data.projects.filter(isLive);
   useEffect(() => {
     heading.current?.focus();
   }, [step]);

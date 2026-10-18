@@ -1,6 +1,7 @@
 import type { Identity, Store, Workspace, Project } from "./types";
 import { dateInZone, reportingDeadline, startOfWeek } from "./calendar";
 import { smtpSettings } from "./mail-config";
+import { appEnvironment } from "./environment";
 export class AppError extends Error {
   constructor(
     message: string,
@@ -32,6 +33,14 @@ export function resolveIdentity(
 export function requireAdmin(identity: Identity) {
   if (identity.role !== "admin")
     throw new AppError("Manager access is required.", 403);
+}
+// Projects created before approvals existed have no approval value.
+export function isApproved(project: Pick<Project, "approval">) {
+  return !project.approval || project.approval === "approved";
+}
+// Live projects collect weekly reports and send reminders.
+export function isLive(project: Pick<Project, "approval" | "state">) {
+  return project.state === "active" && isApproved(project);
 }
 // The existing workspace is one shared lab per configured spreadsheet. All
 // registered accounts retain read access; memberships grant project-scoped edits.
@@ -77,6 +86,7 @@ export function workspaceFor(
     reportingDue: reportingDeadline(store.settings, now),
     emailReady: Boolean(smtpSettings() && !demo),
     cronReady: Boolean((process.env.CRON_SECRET?.length ?? 0) >= 32 && !demo),
+    environment: appEnvironment(),
     ...(identity.role === "admin"
       ? {
           reminderHealth: {

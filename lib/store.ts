@@ -6,8 +6,10 @@ import { upgradeStore, recordChanges } from "./collaboration";
 import { AppError, resolveIdentity } from "./access";
 import { adminEmails } from "./config";
 import { commitSheetTransaction, readSheetRevision } from "./sheet-transactions";
+import { requireSeparateSpreadsheet } from "./environment";
 import type { Identity } from "./types";
 import type {
+  OutputVersion,
   Person,
   Settings,
   Reminder,
@@ -19,6 +21,7 @@ function demoStore() {
 }
 export async function readStore(): Promise<Store> {
   if (isDemo()) return upgradeStore(demoStore());
+  requireSeparateSpreadsheet();
   if (!process.env.SHEETS_TRANSACTION_URL) return upgradeStore(await readSheet());
   // Bootstrap a blank spreadsheet before reading its revision. Bracket the
   // domain snapshot so concurrent writes cannot yield mixed data and versions.
@@ -74,3 +77,11 @@ export async function addReminder(reminder: Reminder) {
   return upsertSheet("LabDeliveries", reminder);
 }
 export const saveReminder = addReminder;
+// Versions are immutable rows with unique IDs, so appending needs no lock.
+export async function addVersion(version: OutputVersion) {
+  if (isDemo()) {
+    demoStore().versions = [...(demoStore().versions ?? []), version];
+    return;
+  }
+  return upsertSheet("LabVersions", version);
+}

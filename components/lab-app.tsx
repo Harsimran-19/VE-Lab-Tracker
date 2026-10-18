@@ -9,7 +9,10 @@ import {
   UserIcon as UserRound,
 } from "@phosphor-icons/react";
 import { PROJECT_TYPES } from "@/lib/types";
-import { canEditProject, canManageProject } from "@/lib/access";
+import { canEditProject, canManageProject, isApproved, isLive } from "@/lib/access";
+import { approvalLabel } from "./project-governance";
+import { ReportExtras } from "./weekly-report";
+import { EnvironmentBanner } from "./environment-banner";
 import { ProjectFolders } from "./project-folders";
 import type { Project, Update, Workspace } from "@/lib/types";
 import { latestReports, reportDate, shortDate } from "@/lib/format";
@@ -17,7 +20,7 @@ import { mutate, ProjectForm, type ProjectAction } from "./forms";
 import { EntryForm } from "./entry-form";
 import { ProfileForm, SettingsForm } from "./profile-form";
 import { Welcome } from "./welcome";
-import { TeamDirectory, MemberContact, memberProjects } from "./team-directory";
+import { TeamDirectory, MemberContact, MemberProfile, memberProjects } from "./team-directory";
 import type { Screen } from "./workspace-page";
 import { WorkspaceChrome } from "./workspace-chrome";
 import { HomePage } from "./home-page";
@@ -53,6 +56,7 @@ export function LabApp({
         initial.projects.some((p) => p.state === "completed"),
     ),
     [accountTab, setAccountTab] = useState("details"),
+    [requests, setRequests] = useState(false),
     [onHold, setOnHold] = useState(
       !initial.projects.some(
         (p) => p.state === "active" || p.state === "completed",
@@ -69,16 +73,17 @@ export function LabApp({
   const manager = data.identity.role === "admin",
     own = data.memberships.filter((m) => m.personId === data.identity.personId),
     ownIds = new Set(own.map((m) => m.projectId)),
-    active = data.projects.filter((p) => p.state === "active"),
+    active = data.projects.filter(isLive),
     chosen = data.projects.find((p) => p.id === projectId),
     person = data.people.find((p) => p.id === personId);
   const current = data.updates.filter((u) => u.weekStart === data.weekStart),
     reported = (projectId: string, personId: string) =>
       current.some((u) => u.projectId === projectId && u.personId === personId);
   const latest = latestReports(data.updates);
+  const requested = data.projects.filter((p) => !isApproved(p));
   const filtered = data.projects.filter(
     (p) =>
-      p.state === (onHold ? "on-hold" : completed ? "completed" : "active") &&
+      (requests ? !isApproved(p) : isApproved(p) && p.state === (onHold ? "on-hold" : completed ? "completed" : "active")) &&
       (!onlyMine || ownIds.has(p.id)) &&
       (!typeFilter || (typeFilter === "unclassified" ? !p.type : p.type === typeFilter)) &&
       (!folderFilter || (folderFilter === "ungrouped" ? !p.folderId : p.folderId === folderFilter)) &&
@@ -145,6 +150,7 @@ export function LabApp({
         <p className="next-plan">
           <strong>Next step:</strong> {u.nextPlan}
         </p>
+        <ReportExtras update={u} />
         {u.needsHelp === "true" && (
           <div className="blocker">
             <strong>Help needed</strong>
@@ -172,10 +178,11 @@ export function LabApp({
   return (
     <WorkspaceChrome screen={screen}>
       <div className="workspace-content">
+        <EnvironmentBanner environment={data.environment} />
         {data.demo && (
           <div className="demo-banner">
             <span>
-              <strong>Local preview</strong> · Example data. Emails are simulated.
+              <strong>Sample workspace</strong> · Example data that can reset at any time. Emails are simulated.
             </span>
             <div className="sample-actions">
               <form action="/api/demo" method="post">
@@ -222,18 +229,21 @@ export function LabApp({
               </p>
             </div>
             <div className="page-actions">
-              {manager && screen === "projects" && (
+              {screen === "projects" && (
                   <button
                     className="button primary"
                     onClick={() => setEditing({ action: "create" })}
                   >
                     <Plus size={16} />
-                    New project
+                    {manager ? "New project" : "Propose a project"}
                   </button>
                 )}
               {screen === "project" && chosen && canEditProject(data,data.identity,chosen) && <button className="button secondary" onClick={() => setEditing({ project: chosen, action: "settings" })}>Project settings</button>}
+              {screen === "project" && chosen && !isApproved(chosen) && (
+                <span className={`report-status ${chosen.approval === "pending" ? "blocked" : "done"}`}>{approvalLabel(chosen)}</span>
+              )}
               {screen === "project" &&
-                chosen &&
+                chosen && isApproved(chosen) &&
                 (chosen.state === "active" ? (
                   ownIds.has(chosen.id) ? (
                     <button
@@ -296,7 +306,7 @@ export function LabApp({
               <div className="directory-toolbar">
                 <div className="search-field"><Search size={18} aria-hidden="true" /><input aria-label="Search projects" placeholder="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
                 <div className="segmented" aria-label="Project state">
-                  {[{label:"Active",state:"active"},{label:"Completed",state:"completed"},{label:"Paused",state:"on-hold"}].map(({label,state}) => <button key={state} className={(onHold ? "on-hold" : completed ? "completed" : "active") === state ? "selected" : ""} aria-pressed={(onHold ? "on-hold" : completed ? "completed" : "active") === state} onClick={() => {setCompleted(state === "completed");setOnHold(state === "on-hold");}}>{label}</button>)}
+                  {[{label:"Active",state:"active"},{label:"Completed",state:"completed"},{label:"Paused",state:"on-hold"},{label:`Awaiting approval${requested.length ? ` (${requested.length})` : ""}`,state:"requests"}].map(({label,state}) => { const current = requests ? "requests" : onHold ? "on-hold" : completed ? "completed" : "active"; return <button key={state} className={current === state ? "selected" : ""} aria-pressed={current === state} onClick={() => {setRequests(state === "requests");setCompleted(state === "completed");setOnHold(state === "on-hold");}}>{label}</button>; })}
                 </div>
               </div>
               <div className="project-filters">
@@ -305,9 +315,9 @@ export function LabApp({
                 {!manager && own.length > 0 && <label className="check-label scope-toggle"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />Only my projects</label>}
                 {(typeFilter || folderFilter) && <button className="text-action" onClick={()=>{setTypeFilter("");setFolderFilter("");}}>Clear filters</button>}
               </div>
-              {!manager && <p className="section-copy">Open an active project and choose Join project to contribute and edit its details. The lab manager creates new projects.</p>}
+              {!manager && <p className="section-copy">Open an active project and choose Join project to contribute and edit its details. To start something new, choose Propose a project; the lab manager approves it before weekly reporting begins.</p>}
               <ProjectFolders data={data} saved={refresh} browse={setFolderFilter} selected={folderFilter} />
-              {filtered.length > 0 ? <ProjectTable projects={[...filtered].sort((a,b) => a.name.localeCompare(b.name))} data={data} /> : <section className="empty-state"><h2>{!data.projects.length ? "No projects yet" : search ? "No matching projects" : "No projects in this view"}</h2><p>{!data.projects.length ? manager ? "Create a project with a clear goal to get started." : "Projects will appear when the manager adds them." : "Try another search or project filter."}</p></section>}
+              {filtered.length > 0 ? <ProjectTable projects={[...filtered].sort((a,b) => a.name.localeCompare(b.name))} data={data} /> : <section className="empty-state"><h2>{!data.projects.length ? "No projects yet" : search ? "No matching projects" : "No projects in this view"}</h2><p>{!data.projects.length ? manager ? "Create a project with a clear goal to get started." : "Propose a project, or wait for the manager to add one." : requests ? "No projects are waiting for approval." : "Try another search or project filter."}</p></section>}
             </>
           )}
           {screen === "project" && chosen && <ProjectWorkspace project={chosen} data={data} busy={busy} edit={(action) => setEditing({ project: chosen, action })} saved={refresh} reportCard={reportCard} clearMilestone={async () => {await action(async () => {await mutate("/api/projects", {id:chosen.id,action:"clear-milestone",expectedVersion:chosen.version ?? 0}, "PATCH");await refresh();setNotice("Milestone removed.");});}} />}
@@ -315,6 +325,7 @@ export function LabApp({
           {screen === "member" && person && (
             <div className="member-workspace">
               <MemberContact person={person} own={person.id === data.identity.personId} />
+              <MemberProfile person={person} data={data} />
               <section className="member-section"><h2>Projects</h2>{memberProjects(data,person.id).length ? <ProjectTable projects={memberProjects(data,person.id)} data={data} showLead={false} /> : <p className="quiet-empty">No projects joined yet.</p>}</section>
               <section className="member-section"><h2>Current responsibilities</h2><ul className="member-responsibilities">{active.flatMap((p) => (p.workstreams ?? []).filter((w) => !w.archived && w.ownerId === person.id && w.status !== "Done").map((w) => <li key={w.id}><span>{w.name}</span><Link href={`/projects/${p.id}`} prefetch={false}>{p.name}</Link><span>{w.due ? shortDate(w.due) : "No due date"}</span><span className="home-phase">{w.status}</span></li>))}</ul>{!active.some((p) => (p.workstreams ?? []).some((w) => !w.archived && w.ownerId === person.id && w.status !== "Done")) && <p className="quiet-empty">No current responsibilities.</p>}</section>
               <section className="member-section"><h2>Recent updates</h2><div className="update-feed">{latest.filter((u) => u.personId === person.id).slice(0,3).map(reportCard)}</div>{!latest.some((u) => u.personId === person.id) && <p className="quiet-empty">No updates shared yet.</p>}</section>
@@ -425,7 +436,9 @@ export function LabApp({
             setNotice(
               editing.action === "complete"
                 ? "Project completed. Reporting and reminders have stopped."
-                : "Project saved.",
+                : editing.action === "create" && !manager
+                  ? "Project sent to the lab manager for approval. You can keep editing it from Projects → Awaiting approval."
+                  : "Project saved.",
             );
           }}
         />

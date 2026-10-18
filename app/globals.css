@@ -3289,3 +3289,55 @@ fieldset {
 .project-heading h1, .project-heading p, .project-breadcrumb .breadcrumb-current, .home-project-name { overflow-wrap: anywhere; }
 .project-breadcrumb > span:first-child, .project-breadcrumb > svg { flex-shrink: 0; }
 .project-breadcrumb .breadcrumb-current { min-width: 0; }
+
+/* Environment marker for test and dev deployments */
+.environment-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 30px; font-size: 12px; background: #fff6dc; border-bottom: 1px solid #ebd99c; color: #6b5310; }
+.environment-banner.is-development { background: #eaf3fc; border-color: #bfd6ee; color: #1d4f7a; }
+.environment-banner strong { text-transform: uppercase; letter-spacing: .04em; }
+
+/* Project approval and attributes */
+.approval-panel { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 18px 22px; margin-bottom: 20px; border-radius: 13px; border: 1px solid #ebd99c; background: #fffaf0; }
+.approval-panel.is-rejected { border-color: #e9c3c5; background: #fff6f6; }
+.approval-panel h2 { font-size: 16px; margin: 0 0 6px; }
+.approval-panel p { font-size: 13px; margin: 4px 0; }
+.approval-note { white-space: pre-wrap; }
+.approval-actions { display: flex; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+.attribute-list { display: grid; gap: 14px; margin: 12px 0; }
+.attribute-row dt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.attribute-row dd { margin: 3px 0 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.attribute-row.is-rejected dd:first-of-type { color: var(--muted); text-decoration: line-through; }
+.approval-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.approval-list li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto; gap: 14px; align-items: center; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+
+/* Weekly report extras */
+.report-extras { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 20px; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.report-extras dt { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 3px; }
+.report-extras dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.report-extras-wide { grid-column: 1 / -1; }
+.meeting-fields { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 14px; margin: 0; min-width: 0; }
+.meeting-fields legend { font-size: 13px; font-weight: 600; padding: 0 6px; }
+.hours-summary { padding: 20px 24px; margin-bottom: 20px; }
+.hours-summary h2 { font-size: 16px; margin: 0 0 12px; }
+.hours-summary tfoot td { font-weight: 600; }
+
+/* Versioned data, paper and code */
+.project-outputs { display: grid; gap: 20px; }
+.output-panel { padding: 22px 24px; }
+.output-item { border-top: 1px solid var(--line); padding: 16px 0 4px; }
+.output-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.output-head h3 { font-size: 15px; margin: 0 0 4px; }
+.output-head a { display: inline-flex; align-items: center; gap: 4px; }
+.version-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: var(--light); color: var(--ink); vertical-align: middle; }
+.version-history { margin-top: 10px; font-size: 13px; }
+.version-history ol { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.version-history li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
+
+/* Member profile */
+.member-bio { white-space: pre-wrap; margin: 0 0 16px; }
+
+@media (max-width: 720px) {
+  .approval-panel, .output-head { flex-direction: column; }
+  .approval-list li, .version-history li { grid-template-columns: 1fr; gap: 4px; }
+  .environment-banner { padding: 8px 16px; }
+}
+.hours-summary th { white-space: nowrap; }

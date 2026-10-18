@@ -8,6 +8,8 @@ import type { Workspace, Workstream } from "@/lib/types";
 import { shortDate, latestReports } from "@/lib/format";
 import { membershipJoinedBefore } from "@/lib/calendar";
 import { Modal } from "./modal";
+import { isLive } from "@/lib/access";
+import { ApprovalQueue } from "./project-governance";
 
 export function HomePage({ data, busy, writeUpdate, createProject, changeStatus }: {
   data: Workspace;
@@ -19,7 +21,7 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
   const [chooseProject, setChooseProject] = useState(false);
   const [reportingOpen, setReportingOpen] = useState(false);
   const manager = data.identity.role === "admin";
-  const active = data.projects.filter((p) => p.state === "active").sort((a, b) => a.name.localeCompare(b.name));
+  const active = data.projects.filter(isLive).sort((a, b) => a.name.localeCompare(b.name));
   const ownIds = new Set(data.memberships.filter((m) => m.personId === data.identity.personId).map((m) => m.projectId));
   const ownProjects = active.filter((p) => ownIds.has(p.id));
   const projects = manager && !ownProjects.length ? active : ownProjects;
@@ -59,6 +61,8 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
         {ownProjects.length ? <button className="home-primary" onClick={openUpdate}>{allSubmitted ? "Edit an update" : "Write an update"}</button> : <Link className="home-primary" href={manager && active.length ? "#lab-reporting" : "/projects"} onClick={() => { if (manager && active.length) setReportingOpen(true); }}>{manager && active.length ? "View reporting" : "Browse projects"}</Link>}
       </section>
 
+      <ApprovalQueue data={data} />
+
       <section className="home-section" aria-labelledby="home-projects-heading">
         <div className="home-section-heading">
           <h2 id="home-projects-heading">{manager && !ownProjects.length ? "Lab projects" : "Your projects"}</h2>
@@ -77,7 +81,7 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
               </tr>)}</tbody>
             </table>
           </div>
-        ) : <div className="home-empty"><h3>{manager ? "Start with your first project" : "You haven’t joined a project yet"}</h3><p>{manager ? "Give your research a clear goal and a next milestone." : "Open Projects and join the research you are working on."}</p>{manager ? <button className="home-primary" onClick={createProject}>Create project</button> : <Link className="home-primary" href="/projects">Explore projects</Link>}</div>}
+        ) : <div className="home-empty"><h3>{manager ? "Start with your first project" : "You haven’t joined a project yet"}</h3><p>{manager ? "Give your research a clear goal and a next milestone." : "Open Projects and join the research you are working on, or propose a new one."}</p>{manager ? <button className="home-primary" onClick={createProject}>Create project</button> : <div className="inline-actions"><Link className="home-primary" href="/projects">Explore projects</Link><button className="text-action" onClick={createProject}>Propose a project</button></div>}</div>}
       </section>
 
       <section className="home-section" aria-labelledby="home-responsibilities-heading">

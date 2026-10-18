@@ -46,6 +46,7 @@ function ranges() {
     s.folders,
     s.activities,
     [],
+    s.versions,
   ];
   return {
     valueRanges: Object.entries(TABLES).map(([name, headers], i) => ({
@@ -188,7 +189,7 @@ test("upserts use RAW input, update the last matching ID and preserve multiline 
         values: [["id"], ["report-id"], ["other"], ["report-id"]],
       });
     assert.equal(init.method, "PUT");
-    assert.ok(url.includes("'LabReports'!A4:Z4?valueInputOption=RAW"));
+    assert.ok(url.includes("'LabReports'!A4:T4?valueInputOption=RAW"));
     const body = JSON.parse(String(init.body));
     assert.equal(body.values[0][6], "=literal formula\nSecond line");
     written = true;
