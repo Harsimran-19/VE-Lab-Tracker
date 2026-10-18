@@ -1,4 +1,5 @@
 import { AppError, requireAdmin, requireProjectAccess } from "./access";
+import type { ProjectAttribute } from "./types";
 import { STAGES } from "./types";
 import type { Identity, Project, Store } from "./types";
 import {
@@ -12,7 +13,9 @@ export function planProjectCreation(
   identity: Identity,
   raw: unknown,
 ): Project {
-  requireAdmin(identity);
+  // Any lab member can propose a project; the manager's projects start approved.
+  if (!store.people.some(p => p.id === identity.personId && p.email.toLowerCase() === identity.email.toLowerCase()))
+    throw new AppError("This account is outside the lab.", 403);
   const input = newProjectSchema.parse(raw);
   if (input.leadId && !store.people.some((p) => p.id === input.leadId))
     throw new AppError("Choose a lead from the lab.");
@@ -44,6 +47,10 @@ export function planProjectCreation(
     phase: input.phase ?? (input.type && input.type !== "Research" ? "" : "Idea"),
     leadId: input.leadId || identity.personId,
     state: "active",
+    approval: identity.role === "admin" ? "approved" : "pending",
+    requestedBy: identity.personId,
+    reviewNote: "",
+    attributes: [],
   };
 }
 
@@ -51,10 +58,12 @@ export function planProjectChange(
   store: Store,
   identity: Identity,
   raw: unknown,
+  now = new Date(),
 ): Project {
   const input = projectChangeSchema.parse(raw);
   const existing = store.projects.find((p) => p.id === input.id);
   if (!existing) throw new AppError("Project not found.", 404);
+  if (input.action === "review" || input.action === "attribute-review") requireAdmin(identity);
   const administrative = ["classification", "complete", "reopen", "pause"].includes(input.action) ||
     ((input.action === "settings" || input.action === "details") && input.leadId !== (existing.leadId ?? ""));
   requireProjectAccess(store, identity, existing, administrative);
@@ -125,6 +134,50 @@ export function planProjectChange(
       project.type = input.type;
       project.folderId = input.folderId;
       break;
+    case "review":
+      project.approval = input.decision === "approve" ? "approved" : "rejected";
+      project.reviewNote = input.note;
+      break;
+    case "resubmit":
+      if (existing.approval !== "rejected") throw new AppError("Only a project that was not approved can be resubmitted.", 409);
+      project.approval = "pending";
+      break;
+    case "attribute": {
+      const list = project.attributes ?? [];
+      const previous = list.find(a => a.id === input.attribute.id);
+      if (!previous && list.length >= 30) throw new AppError("This project already has 30 attributes.");
+      if (list.some(a => a.id !== input.attribute.id && a.label.toLowerCase() === input.attribute.label.toLowerCase()))
+        throw new AppError("This project already has an attribute with that name.");
+      if (previous && previous.label === input.attribute.label && previous.value === input.attribute.value) break;
+      // A member's new or changed attribute waits for the manager's approval.
+      const approved = identity.role === "admin";
+      const attribute: ProjectAttribute = {
+        ...input.attribute,
+        status: approved ? "approved" : "pending",
+        proposedBy: identity.personId,
+        proposedAt: now.toISOString(),
+        reviewedBy: approved ? identity.personId : "",
+        reviewedAt: approved ? now.toISOString() : "",
+      };
+      project.attributes = previous ? list.map(a => a.id === attribute.id ? attribute : a) : [...list, attribute];
+      break;
+    }
+    case "remove-attribute": {
+      const attribute = (project.attributes ?? []).find(a => a.id === input.attributeId);
+      if (!attribute) throw new AppError("Attribute not found.", 404);
+      if (attribute.status === "approved" && identity.role !== "admin")
+        throw new AppError("Ask the lab manager to remove an approved attribute.", 403);
+      project.attributes = (project.attributes ?? []).filter(a => a.id !== input.attributeId);
+      break;
+    }
+    case "attribute-review": {
+      const attribute = (project.attributes ?? []).find(a => a.id === input.attributeId);
+      if (!attribute) throw new AppError("Attribute not found.", 404);
+      const status = input.decision === "approve" ? "approved" : "rejected";
+      if (attribute.status === status) break;
+      project.attributes = (project.attributes ?? []).map(a => a.id === attribute.id ? { ...a, status, reviewedBy: identity.personId, reviewedAt: now.toISOString() } : a);
+      break;
+    }
   }
   if (project.leadId !== existing.leadId) {
     if (existing.leadId && !project.leadId) throw new AppError("Choose a replacement lead.");

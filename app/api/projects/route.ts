@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const { identity } = await authorizedContext();
     const input = await readJson(request);
-    const project = await mutateProjectDomain(identity, "Project", "Created project", (store, current) => {
+    const project = await mutateProjectDomain(identity, "Project", identity.role === "admin" ? "Created project" : "Requested project", (store, current) => {
       const created = planProjectCreation(store, current, input);
       if (store.projects.some(p => p.id === created.id)) return created;
       store.projects.push(created);
@@ -28,7 +28,8 @@ export async function PATCH(request: Request) {
     requireSameOrigin(request);
     const { identity } = await authorizedContext();
     const { expectedVersion, input } = versionedInput(await readJson(request));
-    const project = await mutateProjectDomain(identity, "Project", "Updated project", (store, current) => {
+    const verb = ({ review: "Reviewed project request", resubmit: "Resubmitted project for approval", attribute: "Saved project attribute", "remove-attribute": "Removed project attribute", "attribute-review": "Reviewed project attribute" } as Record<string, string>)[String(input.action)] ?? "Updated project";
+    const project = await mutateProjectDomain(identity, "Project", verb, (store, current) => {
       const changed = planProjectChange(store, current, input);
       checkVersion(changed.version, expectedVersion);
       store.projects = store.projects.map(p => p.id === changed.id ? changed : p);

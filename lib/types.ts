@@ -18,7 +18,10 @@ export const PUBLICATION_STATUSES = [
   "Published",
 ] as const;
 export const PRIORITIES = ["Push", "Steady", "Background"] as const;
-export const PROJECT_TYPES = ["Research", "Startup", "Lab Management"] as const;
+export const PROJECT_TYPES = ["Research", "Startup", "Lab Management", "Fund Sourcing"] as const;
+export const APPROVAL_STATES = ["pending", "approved", "rejected"] as const;
+export const MEETING_STATES = ["none", "scheduled", "held"] as const;
+export const OUTPUT_KINDS = ["Data", "Paper", "Code"] as const;
 export const WORKSTREAM_STATUSES = [
   "Not started",
   "In progress",
@@ -47,6 +50,16 @@ export interface Collaborator {
   contactVia: string;
   notes: string;
 }
+export interface ProjectAttribute {
+  id: string;
+  label: string;
+  value: string;
+  status: (typeof APPROVAL_STATES)[number];
+  proposedBy: string;
+  proposedAt: string;
+  reviewedBy: string;
+  reviewedAt: string;
+}
 export interface Project {
   id: string;
   name: string;
@@ -73,6 +86,11 @@ export interface Project {
   updatedAt?: string;
   updatedBy?: string;
   reporting?: { researcherId: string; supervisorId: string }[];
+  // Empty means a project created before approvals existed; it counts as approved.
+  approval?: (typeof APPROVAL_STATES)[number] | "";
+  requestedBy?: string;
+  reviewNote?: string;
+  attributes?: ProjectAttribute[];
 }
 export interface Person {
   id: string;
@@ -82,6 +100,10 @@ export interface Person {
   reminders: string;
   academicRole?: string;
   affiliation?: string;
+  bio?: string;
+  interests?: string;
+  skills?: string;
+  profileLinks?: ResourceLink[];
 }
 export interface Membership {
   id: string;
@@ -104,6 +126,26 @@ export interface Update {
   blockers: string;
   workstreams?: { id: string; name: string }[];
   version?: number;
+  hours?: string;
+  files?: ResourceLink[];
+  piMeeting?: (typeof MEETING_STATES)[number] | "";
+  piMeetingDate?: string;
+  collaboratorMeeting?: (typeof MEETING_STATES)[number] | "";
+  collaboratorMeetingDate?: string;
+  collaboratorNames?: string;
+  meetingNotes?: string;
+}
+// One immutable row per saved version. Versions are numbered by creation order.
+export interface OutputVersion {
+  id: string;
+  projectId: string;
+  outputId: string;
+  kind: (typeof OUTPUT_KINDS)[number];
+  name: string;
+  url: string;
+  notes: string;
+  personId: string;
+  createdAt: string;
 }
 export interface Folder {
   id: string;
@@ -146,6 +188,7 @@ export interface Store {
   reminders: Reminder[];
   folders: Folder[];
   activities: Activity[];
+  versions: OutputVersion[];
   revision: number;
 }
 export interface Identity {
@@ -164,7 +207,9 @@ export interface Workspace extends Omit<Store, "reminders"> {
   emailReady: boolean;
   cronReady: boolean;
   reminderHealth?: { sent: number; pending: number };
+  environment: AppEnvironment;
 }
+export type AppEnvironment = "production" | "test" | "development";
 export const defaultSettings: Settings = {
   id: "lab",
   reportingDay: "5",
@@ -181,6 +226,7 @@ export function emptyStore(): Store {
     reminders: [],
     folders: [],
     activities: [],
+    versions: [],
     revision: 0,
   };
 }

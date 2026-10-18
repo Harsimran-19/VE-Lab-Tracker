@@ -1,6 +1,6 @@
 # VE Lab Tracker
 
-A weekly project tracker for one Venture Engineering Lab team, supporting Research, Startup and Lab Management work. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Zoho SMTP sends reminders using the existing InternUp mailbox. No new domain is needed.
+A weekly project tracker for one Venture Engineering Lab team, supporting Research, Startup, Lab Management and Fund Sourcing work. Google handles sign-in; Google Sheets stores all persistent data; Vercel hosts the app. Zoho SMTP sends reminders using the existing InternUp mailbox. No new domain is needed.
 
 ## Workflow
 
@@ -18,7 +18,20 @@ The creation form asks for the name, goal and project type, then shows lead, pri
 
 Projects shows the designated lead and all supervisors, with type and folder filters composing with the existing search and project-state filters. Folders group projects at one level; moving a project preserves its URL and content. Only lab managers manage folders. Removing a folder leaves its projects ungrouped. People supports multiple researchers and supervisors, overlapping responsibilities and project-scoped reporting to one or more supervisors. Existing lab-wide visibility and self-join behavior remain unchanged.
 
-Weekly reports still ask for accomplishments, next steps and help needed. Members can optionally tag several of their responsibilities in one report. The server records their names with the report so earlier reports remain understandable after responsibilities change. There are no hours or confidence-score requirements. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+Weekly reports still ask for accomplishments, next steps and help needed. Members can optionally tag several of their responsibilities in one report. The server records their names with the report so earlier reports remain understandable after responsibilities change. Hours, meetings and reference files are optional. Reports derive the author, timestamps and week server-side. Managers cannot edit another member's report.
+
+## Approvals, profiles, hours and versions
+
+- **Project requests:** any lab member can choose **Propose a project**. It appears under **Projects → Awaiting approval** and on the manager's Home page until a lab manager (`ADMIN_EMAILS`) approves it or sends feedback. The team can refine a pending project; weekly reports, joining and reminders start once it is approved. A project that was not approved can be edited and resubmitted. Projects that existed before approvals were added stay approved.
+- **Project attributes:** project members can propose attributes such as a funding source, dataset or partner institution. A member's new or changed attribute waits for the manager's approval; managers' own attributes are approved immediately. Members cannot remove an approved attribute.
+- **Fund Sourcing** is a project type alongside Research, Startup and Lab Management.
+- **Profiles:** Account holds an optional bio, research interests, skills and up to five links. Team search covers them, and each member page shows the profile and the hours they have reported.
+- **Weekly reports** add optional hours, meetings with the PI and with external collaborators (scheduled or held, with dates and notes), and up to ten reference-file links. Projects show weekly and total hours per member.
+- **Data & outputs:** each project tab lists Data, Paper and Code items. Every save adds a numbered version (v1, v2, …) with a link, what changed, who saved it and when; earlier versions are never edited or removed. The tab flags data that has not been versioned for over a week. Versions are stored in the append-only `LabVersions` tab.
+
+## Production, test and dev versions
+
+See [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md). `main` is production, `test` is a Google-login copy for trying changes with lab members, and `dev` is a sample workspace with no sign-in. Non-production versions show a banner and refuse to load against the live spreadsheet when `PRODUCTION_GOOGLE_SHEET_ID` is set.
 
 ## Testing both roles on your deployment
 
@@ -31,7 +44,7 @@ Creating a project does not create members. Members appear after their own Googl
 
 ## Fresh Google Sheets data
 
-The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries, LabFolders, LabActivity, LabRevision** automatically when needed. Old tracker tabs are neither read nor imported. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate lab tabs without altering its old records. Production project writes require the locked writer setup below; no data reset is needed.
+The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries, LabFolders, LabActivity, LabRevision, LabVersions** automatically when needed. Tabs from earlier releases gain the new columns on first load; `LabProjects` grows past column Z, so the app widens that tab's grid first. Old tracker tabs are neither read nor imported. A fresh blank spreadsheet is supported, and the existing connected spreadsheet can host these separate lab tabs without altering its old records. Production project writes require the locked writer setup below; no data reset is needed.
 
 Existing lab tabs upgrade additively: supported original Projects, Members, Memberships and Reports headers receive optional columns without changing old data rows. Unexpected headers are refused rather than overwritten. Resource links, responsibilities, collaborators, reporting relationships and report responsibility labels use validated JSON. Existing IDs, URLs, content and phase values survive. Legacy types remain Unclassified; unknown leads remain Unassigned. A recorded lead with a valid lab profile receives membership without an invented join date. No historical supervisors, reporting links, actors or dates are guessed. See [collaboration setup and migration](docs/COLLABORATION_SETUP.md).
 
@@ -59,7 +72,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Do not copy the example over an existing private ENV file. Set `DEMO_MODE=true` for credential-free local testing: the test workspace starts empty, and you create its projects. The development-only switch lets you try a new member. In-memory test data resets on restart; sample emails are simulated. Demo authentication is unavailable in production or on Vercel.
+Do not copy the example over an existing private ENV file. Set `DEMO_MODE=true` for credential-free local testing: the test workspace starts empty, and you create its projects. The development-only switch lets you try a new member. In-memory test data resets on restart; sample emails are simulated. Demo authentication is unavailable in production; on Vercel it works only on preview deployments that set `DEMO_MODE=true` (the dev version).
 
 ```bash
 npm test

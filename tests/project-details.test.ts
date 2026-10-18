@@ -51,14 +51,14 @@ test("project creation saves its initial direction, lead and deadline together",
     targetConference: "",
   };
   const project = planProjectCreation(s, manager, input);
-  assert.deepEqual(project, { ...input, type: "Research", state: "active" });
+  assert.deepEqual(project, { ...input, type: "Research", state: "active", approval: "approved", requestedBy: manager.personId, reviewNote: "", attributes: [] });
   s.projects.push(project);
   assert.deepEqual(planProjectCreation(s, manager, input), project);
   assert.throws(
     () => planProjectCreation(s, manager, { ...input, priority: "Background" }),
     /already exists/,
   );
-  assert.throws(() => planProjectCreation(s, member, input), /Manager access/);
+  assert.equal(planProjectCreation(s, member, { ...input, id: "66666666-6666-4666-8666-666666666666" }).approval, "pending");
   assert.throws(
     () => planProjectCreation(s, manager, { ...input, leadId: "missing" }),
     /lead/,
@@ -94,7 +94,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
     notes: "Keep this context",
     state: "on-hold",
   });
-  const { state: _state, type: _type, ...fields } = created;
+  const { state: _state, type: _type, approval: _approval, requestedBy: _requestedBy, reviewNote: _reviewNote, attributes: _attributes, ...fields } = created;
   const changed = planProjectChange(s, manager, {
     ...fields,
     action: "settings",
@@ -117,6 +117,10 @@ test("older creation requests retain safe defaults; consolidated settings preser
     notes: _notes,
     state: _held,
     type: _changedType,
+    approval: _changedApproval,
+    requestedBy: _changedRequester,
+    reviewNote: _changedNote,
+    attributes: _changedAttributes,
     ...setup
   } = changed;
   const cleared = planProjectChange(s, manager, {

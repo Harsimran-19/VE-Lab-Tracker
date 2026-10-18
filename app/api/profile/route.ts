@@ -19,6 +19,10 @@ export async function PATCH(request: Request) {
       ...(input.affiliation !== undefined
         ? { affiliation: input.affiliation }
         : {}),
+      ...(input.bio !== undefined ? { bio: input.bio } : {}),
+      ...(input.interests !== undefined ? { interests: input.interests } : {}),
+      ...(input.skills !== undefined ? { skills: input.skills } : {}),
+      ...(input.profileLinks !== undefined ? { profileLinks: input.profileLinks } : {}),
     });
     return NextResponse.json({ saved: true });
   } catch (e) {

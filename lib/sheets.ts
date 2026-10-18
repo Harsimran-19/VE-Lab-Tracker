@@ -8,6 +8,7 @@ import {
   resourceLinkSchema,
   workstreamRecordSchema,
   reportWorkstreamsSchema,
+  attributeRecordSchema,
 } from "./schema";
 import type {
   Store,
@@ -19,6 +20,7 @@ import type {
   Reminder,
   Folder,
   Activity,
+  OutputVersion,
 } from "./types";
 // Fresh schema: legacy tracker tabs are never read, imported, or overwritten.
 export const TABLES = {
@@ -43,6 +45,7 @@ export const TABLES = {
     "workstreams",
     "collaborators",
     "type", "folderId", "version", "updatedAt", "updatedBy", "reporting",
+    "approval", "requestedBy", "reviewNote", "attributes",
   ],
   LabMembers: [
     "id",
@@ -52,6 +55,10 @@ export const TABLES = {
     "reminders",
     "academicRole",
     "affiliation",
+    "bio",
+    "interests",
+    "skills",
+    "profileLinks",
   ],
   LabMemberships: ["id", "projectId", "personId", "joinedAt", "contributor", "supervisor"],
   LabReports: [
@@ -67,6 +74,14 @@ export const TABLES = {
     "blockers",
     "workstreams",
     "version",
+    "hours",
+    "files",
+    "piMeeting",
+    "piMeetingDate",
+    "collaboratorMeeting",
+    "collaboratorMeetingDate",
+    "collaboratorNames",
+    "meetingNotes",
   ],
   LabSettings: ["id", "reportingDay", "reportingTime", "timezone"],
   LabDeliveries: [
@@ -82,13 +97,23 @@ export const TABLES = {
   LabFolders: ["id", "name", "description", "version"],
   LabActivity: ["id", "projectId", "area", "action", "actorId", "actorName", "at", "changes"],
   LabRevision: ["id", "version"],
+  // Append-only: each data, paper or code version is a new row.
+  LabVersions: ["id", "projectId", "outputId", "kind", "name", "url", "notes", "personId", "createdAt"],
 } as const;
+// Read and write past column Z: LabProjects has more than 26 columns.
+const LAST_COLUMN = "AZ";
+export function columnName(index: number) {
+  let name = "";
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26))
+    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  return name;
+}
 export type Table = keyof typeof TABLES;
-type Entity = Project | Person | Membership | Update | Settings | Reminder | Folder | Activity | { id: string; version: number };
+type Entity = Project | Person | Membership | Update | Settings | Reminder | Folder | Activity | OutputVersion | { id: string; version: number };
 const legacyLengths: Partial<Record<Table, number[]>> = {
-  LabProjects: [7, 19],
-  LabMembers: [5],
-  LabReports: [10, 11],
+  LabProjects: [7, 19, 25],
+  LabMembers: [5, 7],
+  LabReports: [10, 11, 12],
   LabMemberships: [4],
 };
 function legacyHeaders(table: Table, row: string[]) {
@@ -197,7 +222,7 @@ export async function readSheet(): Promise<Store> {
     return readSheet();
   }
   const query = new URLSearchParams();
-  for (const table of tables) query.append("ranges", `'${table}'!A:Z`);
+  for (const table of tables) query.append("ranges", `'${table}'!A:${LAST_COLUMN}`);
   query.set("valueRenderOption", "UNFORMATTED_VALUE");
   const data = await request(`/values:batchGet?${query}`);
   const rows = data.valueRanges.map(
@@ -241,9 +266,21 @@ export async function readSheet(): Promise<Store> {
           z.array(collaboratorRecordSchema).max(50),
           "collaborators",
         ),
+        attributes: decodeList(
+          project.attributes as unknown as string,
+          z.array(attributeRecordSchema).max(30),
+          "project attributes",
+        ),
       }),
     ),
-    people,
+    people: people.map((person) => ({
+      ...person,
+      profileLinks: decodeList(
+        person.profileLinks as unknown as string,
+        z.array(resourceLinkSchema).max(5),
+        "profile links",
+      ),
+    })),
     memberships: toObjects<Membership>(rows[2], TABLES.LabMemberships).map(m => ({ ...m, contributor: String(m.contributor) !== "false", supervisor: String(m.supervisor) === "true" })),
     updates: toObjects<Update>(rows[3], TABLES.LabReports).map((update) => ({
       ...update,
@@ -252,6 +289,11 @@ export async function readSheet(): Promise<Store> {
         update.workstreams as unknown as string,
         reportWorkstreamsSchema,
         "report responsibilities",
+      ),
+      files: decodeList(
+        update.files as unknown as string,
+        z.array(resourceLinkSchema).max(10),
+        "report files",
       ),
     })),
     settings:
@@ -262,10 +304,11 @@ export async function readSheet(): Promise<Store> {
     folders: toObjects<Folder>(rows[6], TABLES.LabFolders).map(f => ({...f, version: numericVersion(f.version)})),
     activities: toObjects<Activity>(rows[7], TABLES.LabActivity).map(a => ({...a, changes: decodeList(a.changes as unknown as string, z.array(z.object({label: z.string(), before: z.string(), after: z.string()}).strict()), "activity")})),
     revision: numericVersion(toObjects<{id: string; version: number}>(rows[8], TABLES.LabRevision).find(r => r.id === "lab")?.version),
+    versions: toObjects<OutputVersion>(rows[9], TABLES.LabVersions),
   };
 }
 export async function ensureTables(checkHeaders = false) {
-  const meta = await request("?fields=sheets.properties.title");
+  const meta = await request("?fields=sheets.properties(title,sheetId,gridProperties.columnCount)");
   const names = new Set(
     meta.sheets.map(
       (s: { properties: { title: string } }) => s.properties.title,
@@ -280,7 +323,7 @@ export async function ensureTables(checkHeaders = false) {
         body: JSON.stringify({
           requests: missing.map((title) => ({
             addSheet: {
-              properties: { title, gridProperties: { frozenRowCount: 1 } },
+              properties: { title, gridProperties: { frozenRowCount: 1, columnCount: Math.max(26, TABLES[title as Table].length) } },
             },
           })),
         }),
@@ -297,13 +340,14 @@ export async function ensureTables(checkHeaders = false) {
         throw e;
     }
   }
+  await ensureColumns(meta);
   for (const table of Object.keys(TABLES) as Table[]) {
     const data = await request(
-      `/values/${encodeURIComponent(`'${table}'!A:Z`)}`,
+      `/values/${encodeURIComponent(`'${table}'!A:${LAST_COLUMN}`)}`,
     );
     if (data.values?.some((r: string[]) => r.some((v) => v !== ""))) {
       if (legacyHeaders(table, data.values[0] ?? [])) {
-        const start = String.fromCharCode(65 + data.values[0].length);
+        const start = columnName(data.values[0].length);
         await request(
           `/values/${encodeURIComponent(`'${table}'!${start}1`)}?valueInputOption=RAW`,
           {
@@ -324,6 +368,17 @@ export async function ensureTables(checkHeaders = false) {
     );
   }
 }
+// New sheets have 26 columns. Widen older tabs before headers or rows pass
+// column Z; the locked writer also writes within the existing grid.
+async function ensureColumns(meta: { sheets: { properties: { title: string; sheetId?: number; gridProperties?: { columnCount?: number } } }[] }) {
+  const requests = meta.sheets.flatMap(({ properties }) => {
+    const headers = TABLES[properties.title as Table];
+    const count = properties.gridProperties?.columnCount;
+    if (!headers || properties.sheetId === undefined || count === undefined || count >= headers.length) return [];
+    return [{ appendDimension: { sheetId: properties.sheetId, dimension: "COLUMNS", length: headers.length - count } }];
+  });
+  if (requests.length) await request(":batchUpdate", { method: "POST", body: JSON.stringify({ requests }) });
+}
 export function cells(table: Table, entity: Entity) {
   return TABLES[table].map((h) => {
     const value = (entity as unknown as Record<string, unknown>)[h];
@@ -342,10 +397,11 @@ export async function upsertSheet(table: Table, entity: Entity) {
   const index = (data.values ?? []).findLastIndex(
     (r: string[]) => r[0] === entity.id,
   );
+  const last = columnName(TABLES[table].length - 1);
   const path =
     index < 1
-      ? `/values/${encodeURIComponent(`'${table}'!A:Z`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`
-      : `/values/${encodeURIComponent(`'${table}'!A${index + 1}:Z${index + 1}`)}?valueInputOption=RAW`;
+      ? `/values/${encodeURIComponent(`'${table}'!A:${last}`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`
+      : `/values/${encodeURIComponent(`'${table}'!A${index + 1}:${last}${index + 1}`)}?valueInputOption=RAW`;
   await request(path, {
     method: index < 1 ? "POST" : "PUT",
     body: JSON.stringify({ values: [cells(table, entity)] }),

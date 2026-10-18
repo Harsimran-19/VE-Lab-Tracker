@@ -5,6 +5,9 @@ import {
   PUBLICATION_STATUSES,
   WORKSTREAM_STATUSES,
   PROJECT_TYPES,
+  APPROVAL_STATES,
+  MEETING_STATES,
+  OUTPUT_KINDS,
 } from "./types";
 const text = (max: number) => z.string().trim().max(max);
 const id = text(100).min(1);
@@ -39,6 +42,18 @@ export const collaboratorRecordSchema = z
     email: z.union([z.literal(""), text(300).pipe(z.email())]),
     contactVia: text(300),
     notes: text(2000),
+  })
+  .strict();
+export const attributeRecordSchema = z
+  .object({
+    id: z.uuid(),
+    label: text(100).min(1, "Name this attribute."),
+    value: text(1000),
+    status: z.enum(APPROVAL_STATES),
+    proposedBy: text(100),
+    proposedAt: text(40),
+    reviewedBy: text(100),
+    reviewedAt: text(40),
   })
   .strict();
 export const reportWorkstreamsSchema = z
@@ -147,6 +162,17 @@ export const projectChangeSchema = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({id, action: z.literal("classification"), type: z.union([z.literal(""), z.enum(PROJECT_TYPES)]), folderId: text(100)}).strict(),
+  z.object({ id, action: z.literal("review"), decision: z.enum(["approve", "reject"]), note: text(1000) }).strict(),
+  z.object({ id, action: z.literal("resubmit") }).strict(),
+  z
+    .object({
+      id,
+      action: z.literal("attribute"),
+      attribute: z.object({ id: z.uuid(), label: attributeRecordSchema.shape.label, value: text(1000).min(1, "Enter a value.") }).strict(),
+    })
+    .strict(),
+  z.object({ id, action: z.literal("remove-attribute"), attributeId: z.uuid() }).strict(),
+  z.object({ id, action: z.literal("attribute-review"), attributeId: z.uuid(), decision: z.enum(["approve", "reject"]) }).strict(),
 ]);
 export const teamChangeSchema = z.discriminatedUnion("action", [
   z.object({ projectId: id, action: z.literal("add"), personId: id, contributor: z.boolean(), supervisor: z.boolean() }).strict(),
@@ -184,6 +210,8 @@ export const workstreamChangeSchema = z.discriminatedUnion("action", [
     })
     .strict(),
 ]);
+const meeting = z.union([z.literal(""), z.enum(MEETING_STATES)]);
+const optionalDate = z.union([z.literal(""), z.iso.date()]);
 export const entrySchema = z
   .object({
     projectId: id,
@@ -193,12 +221,39 @@ export const entrySchema = z
     needsHelp: z.boolean(),
     blockers: text(2000),
     workstreamIds: z.array(z.uuid()).max(50).optional(),
+    hours: z.union([z.literal(""), z.number().min(0, "Hours cannot be negative.").max(168, "A week has at most 168 hours.").multipleOf(0.25, "Use quarter hours.")]).optional(),
+    files: z.array(resourceLinkSchema).max(10, "Attach up to 10 reference files.").optional(),
+    piMeeting: meeting.optional(),
+    piMeetingDate: optionalDate.optional(),
+    collaboratorMeeting: meeting.optional(),
+    collaboratorMeetingDate: optionalDate.optional(),
+    collaboratorNames: text(300).optional(),
+    meetingNotes: text(2000).optional(),
   })
   .strict()
   .refine((v) => !v.needsHelp || Boolean(v.blockers), {
     message: "Explain what is blocking you.",
     path: ["blockers"],
+  })
+  .refine((v) => v.piMeeting === "scheduled" || v.piMeeting === "held" || !v.piMeetingDate, {
+    message: "Choose whether the meeting is scheduled or held before adding its date.",
+    path: ["piMeetingDate"],
+  })
+  .refine((v) => v.collaboratorMeeting === "scheduled" || v.collaboratorMeeting === "held" || !(v.collaboratorMeetingDate || v.collaboratorNames), {
+    message: "Choose whether the collaborator meeting is scheduled or held before adding its details.",
+    path: ["collaboratorMeeting"],
   });
+export const versionSchema = z
+  .object({
+    id: z.uuid(),
+    projectId: id,
+    outputId: z.uuid(),
+    kind: z.enum(OUTPUT_KINDS),
+    name: text(150).min(1, "Name this item."),
+    url: resourceLinkSchema.shape.url,
+    notes: text(2000).min(1, "Describe what changed in this version."),
+  })
+  .strict();
 export const joinSchema = z.object({ projectId: id }).strict();
 export const onboardingSchema = z
   .object({
@@ -212,6 +267,10 @@ export const profileSchema = z
     reminders: z.boolean(),
     academicRole: text(150).optional(),
     affiliation: text(300).optional(),
+    bio: text(1000).optional(),
+    interests: text(500).optional(),
+    skills: text(500).optional(),
+    profileLinks: z.array(resourceLinkSchema).max(5, "Add up to 5 profile links.").optional(),
   })
   .strict();
 export const settingsSchema = z

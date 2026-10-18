@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import type { Workspace } from "@/lib/types";
+import type { ResourceLink, Workspace } from "@/lib/types";
 import { mutate } from "./forms";
+import { LinkListEditor } from "./link-list";
 export function ProfileForm({
   data,
   saved,
@@ -14,6 +15,10 @@ export function ProfileForm({
     [reminders, setReminders] = useState(person.reminders !== "false"),
     [academicRole, setAcademicRole] = useState(person.academicRole ?? ""),
     [affiliation, setAffiliation] = useState(person.affiliation ?? ""),
+    [bio, setBio] = useState(person.bio ?? ""),
+    [interests, setInterests] = useState(person.interests ?? ""),
+    [skills, setSkills] = useState(person.skills ?? ""),
+    [profileLinks, setProfileLinks] = useState<ResourceLink[]>(person.profileLinks ?? []),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -25,7 +30,7 @@ export function ProfileForm({
     try {
       await mutate(
         "/api/profile",
-        { name, reminders, academicRole, affiliation },
+        { name, reminders, academicRole, affiliation, bio, interests, skills, profileLinks },
         "PATCH",
       );
       await saved();
@@ -40,8 +45,8 @@ export function ProfileForm({
     <form className="panel profile-form" onSubmit={submit}>
       <h2>Profile</h2>
       <p className="section-copy">
-        Introduce yourself to the lab. Your name, academic role and affiliation
-        appear in the team directory.
+        Introduce yourself so lab members can find you. Everything except your
+        reminder setting appears in the team directory.
       </p>
       <fieldset className="entry-fields" disabled={busy}>
         <label>
@@ -75,6 +80,40 @@ export function ProfileForm({
             />
           </label>
         </div>
+        <label>
+          <span>About you <span className="optional-label">Optional</span></span>
+          <textarea
+            aria-label="About you"
+            rows={3}
+            maxLength={1000}
+            placeholder="A few sentences about your background and what you work on."
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+          />
+        </label>
+        <div className="form-grid">
+          <label>
+            <span>Research interests <span className="optional-label">Optional</span></span>
+            <input
+              aria-label="Research interests"
+              maxLength={500}
+              placeholder="e.g. entrepreneurship education, LLMs"
+              value={interests}
+              onChange={(e) => setInterests(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>Skills <span className="optional-label">Optional</span></span>
+            <input
+              aria-label="Skills"
+              maxLength={500}
+              placeholder="e.g. Python, interviews, survey design"
+              value={skills}
+              onChange={(e) => setSkills(e.target.value)}
+            />
+          </label>
+        </div>
+        <LinkListEditor label="Profile links" itemName="Profile link" max={5} links={profileLinks} onChange={setProfileLinks} />
         <div className="profile-account"><span>Google account</span><strong>{person.email}</strong></div>
         <section className="profile-reminders"><h2>Reminders</h2>
         <label className="check-label"><input type="checkbox" role="switch" checked={reminders} onChange={(e) => setReminders(e.target.checked)} />Email me relevant reminders</label>

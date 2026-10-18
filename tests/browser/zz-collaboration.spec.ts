@@ -27,7 +27,8 @@ test("two ordinary members join and edit shared details; folders group separate 
     await member.getByRole("button",{name:"View project team",exact:true}).click();
     await expect(member.getByRole("table")).toContainText(`Shared contributor ${index+1}`);
     await expect(member.getByRole("button",{name:"Add member",exact:true})).toHaveCount(0);
-    expect((await write(member.request,"/api/projects",{id:crypto.randomUUID(),name:"Unauthorized creation",goal:"Denied"},"POST")).status()).toBe(403);
+    const proposal = await write(member.request,"/api/projects",{id:crypto.randomUUID(),name:`Proposed by contributor ${index+1}`,goal:"Needs approval"},"POST");
+    expect(proposal.status()).toBe(201);expect((await proposal.json()).project.approval).toBe("pending");
   }
   await members[0].reload();await expect(members[0].getByRole("tabpanel")).toContainText("Shared title by contributor 2");
   await members[0].getByRole("tab",{name:"Activity",exact:true}).click();

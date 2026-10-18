@@ -1,5 +1,9 @@
+// The sample workspace runs locally, or on a Vercel preview (the dev version)
+// when DEMO_MODE is set for that preview. It never runs in production.
 export function isDemo(env: NodeJS.ProcessEnv = process.env) {
-  return env.NODE_ENV === "development" && env.DEMO_MODE === "true" && !env.VERCEL;
+  if (env.DEMO_MODE !== "true") return false;
+  if (env.VERCEL) return env.VERCEL_ENV === "preview";
+  return env.NODE_ENV === "development";
 }
 export function adminEmails() {
   return (process.env.ADMIN_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);

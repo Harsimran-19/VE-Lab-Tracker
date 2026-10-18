@@ -60,7 +60,7 @@ The new app continues the existing lab-wide visibility and self-join behavior;
 there is one lab per configured spreadsheet. Ordinary assigned members can edit
 project details/progress; lead and supervisors can additionally manage the team,
 lead, type, folder and pause/complete/reopen state. Only existing `ADMIN_EMAILS`
-managers create projects and manage folders. External contacts never grant access.
+managers approve projects and manage folders; other members can propose projects, which wait for approval. External contacts never grant access.
 A removed member loses write access immediately, but may deliberately rejoin an
 active project through the existing self-join flow. Restricting rejoining or
 lab-wide viewing requires a separate product policy decision.
@@ -84,7 +84,7 @@ saved details. Both members can edit; **Activity** records each person’s chang
 Use **View project team** to see contributors, supervisors and reporting lines.
 Ordinary contributors cannot change team membership, supervisors or folders.
 
-New projects and folders still require the configured lab manager. The manager
+Any member can propose a project; the configured lab manager approves it. Folders still require the manager. The manager
 can create a folder from the always-visible **Folders** section on Projects.
 A lead, supervisor or manager opens each related project and chooses **Change
 type or folder** to select the same folder. The folder card shows the project
