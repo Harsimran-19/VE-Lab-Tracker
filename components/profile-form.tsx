@@ -3,6 +3,18 @@ import { useState } from "react";
 import type { ResourceLink, Workspace } from "@/lib/types";
 import { mutate } from "./forms";
 import { LinkListEditor } from "./link-list";
+
+const TIMEZONE_LABELS: Record<string, string> = {
+  "Asia/Shanghai": "China (Beijing, Shanghai) · UTC+8",
+  "Asia/Hong_Kong": "Hong Kong · UTC+8",
+  "Asia/Singapore": "Singapore · UTC+8",
+  "Asia/Tokyo": "Japan · UTC+9",
+  "Asia/Kolkata": "India · UTC+5:30",
+  "Europe/London": "United Kingdom",
+  "America/New_York": "US Eastern",
+  "America/Los_Angeles": "US Pacific",
+  UTC: "UTC",
+};
 export function ProfileForm({
   data,
   saved,
@@ -168,7 +180,7 @@ export function SettingsForm({
     }
   }
   const zones = [
-    ...new Set([form.timezone, "Asia/Kolkata", "Asia/Hong_Kong", "UTC"]),
+    ...new Set([form.timezone, ...Object.keys(TIMEZONE_LABELS)]),
   ];
   return (
     <form className="panel profile-form" onSubmit={submit}>
@@ -223,7 +235,9 @@ export function SettingsForm({
             onChange={(e) => setForm({ ...form, timezone: e.target.value })}
           >
             {zones.map((z) => (
-              <option key={z}>{z}</option>
+              <option key={z} value={z}>
+                {TIMEZONE_LABELS[z] ?? z}
+              </option>
             ))}
           </select>
         </label>

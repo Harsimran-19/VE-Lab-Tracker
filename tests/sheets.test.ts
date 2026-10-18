@@ -160,7 +160,7 @@ test("interrupted first setup repairs missing tabs without changing existing pro
   const recovered = await readSheet();
   assert.equal(recovered.projects.length, 1);
   assert.equal(recovered.people.length, 0);
-  assert.equal(recovered.settings.timezone, "Asia/Kolkata");
+  assert.equal(recovered.settings.timezone, "Asia/Shanghai");
   assert.deepEqual(tabs.get("LabProjects"), project);
   assert.equal(writes, Object.keys(TABLES).length);
   assert.deepEqual(await readSheet(), recovered);

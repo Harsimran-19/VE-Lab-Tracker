@@ -60,7 +60,7 @@ One deterministic report ID per person/project/week prevents duplicate logical r
 - Managers: one weekly summary after the reporting cutoff, including missing reports and unresolved help.
 - Completed and paused projects and opted-out recipients are excluded. Members joining after the cutoff are not counted missing until next week. Legacy memberships with unknown join dates are excluded until a real report establishes participation. Removed members receive no responsibility reminders for that project.
 
-`vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Kolkata and is changed in the app.
+`vercel.json` runs a daily check at 04:00 UTC. The manager summary arrives on the first scheduled run after the cutoff; exact-minute delivery is not promised. The schedule defaults to Friday 18:00 Asia/Shanghai (China time) and is changed in the app.
 
 Email uses `ZOHO_EMAIL` and `ZOHO_PASSWORD` in private ENV settings. `lib/mail-config.ts` fixes InternUp’s endpoint at `smtp.zoho.com:587` with required STARTTLS; host and port are not ENV inputs. A separate strong `CRON_SECRET` protects scheduling. SMTP has no idempotency guarantee: a delivery is reserved before sending; any uncertain attempt is held for review instead of automatically resent. Avoid overlapping cron runs. Test emails can go only to the signed-in manager's Google address. See [the setup guide](docs/GOOGLE_SETUP.md) for exact copy/paste instructions and recovery steps.
 

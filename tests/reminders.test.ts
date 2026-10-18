@@ -23,11 +23,11 @@ test("weekly dates and cutoffs use the lab timezone, including UTC boundaries", 
   assert.equal(startOfWeek("2026-10-11"), "2026-10-05");
   const s = fixture();
   assert.deepEqual(
-    reportingDeadline(s.settings, new Date("2026-10-09T12:29:00Z")),
+    reportingDeadline(s.settings, new Date("2026-10-09T09:59:00Z")),
     { date: "2026-10-09", time: "18:00", passed: false },
   );
   assert.equal(
-    reportingDeadline(s.settings, new Date("2026-10-09T12:30:00Z")).passed,
+    reportingDeadline(s.settings, new Date("2026-10-09T10:00:00Z")).passed,
     true,
   );
 });

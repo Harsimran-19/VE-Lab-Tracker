@@ -1,4 +1,4 @@
-export function dateInZone(date: Date, timezone = "Asia/Kolkata") {
+export function dateInZone(date: Date, timezone = "Asia/Shanghai") {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",

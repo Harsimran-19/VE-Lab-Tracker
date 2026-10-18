@@ -214,7 +214,7 @@ export const defaultSettings: Settings = {
   id: "lab",
   reportingDay: "5",
   reportingTime: "18:00",
-  timezone: "Asia/Kolkata",
+  timezone: "Asia/Shanghai",
 };
 export function emptyStore(): Store {
   return {

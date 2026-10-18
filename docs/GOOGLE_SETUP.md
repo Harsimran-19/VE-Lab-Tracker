@@ -180,7 +180,7 @@ Back up the spreadsheet and stop old writers during cutover. Use one writer depl
 6. A member clicks **Write update**, enters accomplishments and next step, and checks **I need help** only when relevant. Their name, date and week are automatic.
 7. Saving again edits that member's current-week report. Earlier weeks remain available in the project; nobody edits another member's report.
 8. On **Home**, expand **Lab reporting** to review team reports and help requests. Research phase and milestone changes happen inside the relevant project.
-9. Under **Account**, set the reporting day, time and lab timezone once. Defaults: Friday, 18:00, Asia/Kolkata.
+9. Under **Account**, set the reporting day, time and lab timezone once. Defaults: Friday, 18:00, Asia/Shanghai.
 
 The app creates **LabProjects, LabMembers, LabMemberships, LabReports, LabSettings, LabDeliveries, LabFolders, LabActivity, LabRevision** when needed. Supported existing Lab schemas receive additive headers, preserving their records. Original non-lab tracker data is not imported. No reset is needed. Follow [the collaborative testing walkthrough](COLLABORATION_SETUP.md#testing-the-deployed-app) before inviting the lab.
 
