@@ -58,7 +58,7 @@ async function commitDirect(before: Store, next: Store) {
   }
   const titles = [...Object.keys(data), "LabRevision"];
   const query = new URLSearchParams({ valueRenderOption: "UNFORMATTED_VALUE" });
-  for (const title of titles) query.append("ranges", `'${title}'!A:Z`);
+  for (const title of titles) query.append("ranges", `'${title}'!A:AZ`);
   const [meta, values] = await Promise.all([
     sheetRequest("?fields=sheets.properties(sheetId,title,gridProperties.rowCount)"),
     sheetRequest(`/values:batchGet?${query}`),
