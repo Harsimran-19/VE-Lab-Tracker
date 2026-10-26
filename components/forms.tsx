@@ -4,6 +4,7 @@ import type { Project, Person } from "@/lib/types";
 import { STAGES, PRIORITIES, PUBLICATION_STATUSES, PROJECT_TYPES } from "@/lib/types";
 import { ConflictReview } from "./conflict-review";
 import { Modal } from "./modal";
+import { PeoplePicker } from "./people-picker";
 export async function mutate(url: string, body: unknown, method = "POST") {
   const response = await fetch(url, {
     method,
@@ -29,6 +30,7 @@ export function ProjectForm({
   people,
   canManage = true,
   creatorId,
+  initiationOnly = false,
   close,
   saved,
 }: {
@@ -37,13 +39,14 @@ export function ProjectForm({
   people: Person[];
   canManage?: boolean;
   creatorId?: string;
+  initiationOnly?: boolean;
   close: () => void;
   saved: () => Promise<void>;
 }) {
   const [id] = useState(project?.id ?? crypto.randomUUID()),
     [name, setName] = useState(project?.name ?? ""),
     [goal, setGoal] = useState(project?.goal ?? ""),
-    [phase, setPhase] = useState(project?.phase ?? "Idea"),
+    [phase, setPhase] = useState(project?.phase ?? "Ideation"),
     [milestone, setMilestone] = useState(project?.milestone ?? ""),
     [due, setDue] = useState(project?.due ?? ""),
     [busy, setBusy] = useState(false),
@@ -51,6 +54,8 @@ export function ProjectForm({
     [confirmed, setConfirmed] = useState(false);
   const [expectedVersion, setExpectedVersion] = useState(project?.version ?? 0);
   const [type, setType] = useState(project?.type || "Research");
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [supervisorIds, setSupervisorIds] = useState<string[]>([]);
   const configuring = action === "create" || action === "settings";
   const [setup, setSetup] = useState({
     leadId: project?.leadId ?? creatorId ?? "",
@@ -68,7 +73,7 @@ export function ProjectForm({
     create: "Create project",
     settings: "Project settings",
     goal: "Edit project goal",
-    phase: "Change research phase",
+    phase: "Change project phase",
     milestone: "Set next milestone",
     complete: "Complete project",
     pause: "Put project on hold",
@@ -89,7 +94,7 @@ export function ProjectForm({
               milestone,
               due,
               ...setup,
-              ...(action === "settings" ? { action } : { type }),
+              ...(action === "settings" ? { action } : { type, memberIds, supervisorIds, milestone: "", due: "", fullTitle: "", publicationStatus: "", targetJournal: "", altJournal: "", targetConference: "" }),
             }
           : action === "goal"
             ? { id, action, name, goal }
@@ -114,13 +119,14 @@ export function ProjectForm({
     }
   }
   return (
-    <Modal title={titles[action]} close={close}>
+    <Modal title={initiationOnly ? "Project initiation form" : titles[action]} close={close}>
       <form className="modal-body" onSubmit={submit}>
         <fieldset className="entry-fields" disabled={busy || confirmed}>
           {configuring && (
             <p className="section-copy">
               {action === "create"
                 ? "Set the direction now. Only the name and goal are required."
+                : initiationOnly ? "Complete the project’s direction and methods for your team."
                 : "Keep the project’s direction, ownership and next deadline together."}
             </p>
           )}
@@ -136,7 +142,7 @@ export function ProjectForm({
                 />
               </label>
               <label>
-                {type === "Research" ? "Research goal" : "Project goal"}
+                Project goal
                 <textarea
                   aria-label="Goal"
                   required
@@ -151,19 +157,20 @@ export function ProjectForm({
           )}
           {configuring && (
             <>
-              <section className="setup-section" aria-label="Research and ownership">
+              <section className="setup-section" aria-label="Project and ownership">
                 <div className="form-grid">
-                  {action === "create" && <label>Project type<select aria-label="Project type" value={type} onChange={e => { setType(PROJECT_TYPES.find(t=>t===e.target.value) ?? "Research"); setPhase(e.target.value === "Research" ? "Idea" : ""); }}>{PROJECT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>}
-                  <label>Research phase<select aria-label="Current phase" value={phase} onChange={(e) => setPhase(e.target.value)}><option value="">Not set</option>{phase && !STAGES.some(s=>s===phase) && <option value={phase}>{phase}</option>}{STAGES.map((value) => <option key={value}>{value}</option>)}</select></label>
+                  {action === "create" && <label>Project type<select aria-label="Project type" value={type} onChange={e => setType(PROJECT_TYPES.find(t=>t===e.target.value) ?? "Research")}>{PROJECT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>}
+                  <label>Project phase<select aria-label="Current phase" value={phase} onChange={(e) => setPhase(e.target.value)}><option value="">Not set</option>{phase && !STAGES.some(s=>s===phase) && <option value={phase}>{phase}</option>}{STAGES.map((value) => <option key={value}>{value}</option>)}</select></label>
                   <label>Project lead<select disabled={!canManage} aria-label="Project lead" value={setup.leadId} onChange={(e) => updateSetup("leadId",e.target.value)}><option value="">{action === "create" ? "Use creator" : "Unassigned"}</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
                 </div>
                 <div className="form-grid">
                   <label>Priority<select aria-label="Priority" value={setup.priority} onChange={(e) => updateSetup("priority",e.target.value)}><option value="">Choose later</option>{PRIORITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
-                  <label><span>Research methods <span className="optional-label">Optional</span></span><input aria-label="Research methods" maxLength={2000} placeholder="e.g. Interviews, survey, experiment" value={setup.methods} onChange={(e) => updateSetup("methods",e.target.value)} /></label>
+                  <label><span>Methods <span className="optional-label">Optional</span></span><input aria-label="Methods" maxLength={2000} placeholder="e.g. Interviews, survey, experiment" value={setup.methods} onChange={(e) => updateSetup("methods",e.target.value)} /></label>
                 </div>
                 <p className="field-help">Push: focus now · Steady: ongoing work · Background: lower urgency.</p>
               </section>
-              <section className="setup-section" aria-label="Next milestone">
+              {action === "create" && <><div className="form-grid"><PeoplePicker label="Project members" people={people} selected={memberIds} onChange={setMemberIds} /><PeoplePicker label="Supervisors" people={people} selected={supervisorIds} onChange={setSupervisorIds} /></div><p className="field-help">The creator and project lead are added as members automatically. Members can also be supervisors.</p></>}
+              {action === "settings" && !initiationOnly && <><section className="setup-section" aria-label="Next milestone">
                 <h3>
                   Next milestone{" "}
                   <span className="optional-label">Optional</span>
@@ -237,7 +244,7 @@ export function ProjectForm({
                       ))}
                     </select>
                     <span className="field-help">
-                      The manuscript’s status, separate from the research phase.
+                      The manuscript’s status, separate from the project phase.
                     </span>
                   </label>
                   <label>
@@ -273,7 +280,7 @@ export function ProjectForm({
                     </label>
                   </div>
                 </div>
-              </details>
+              </details></>}
             </>
           )}
           {action === "phase" && (
@@ -285,12 +292,13 @@ export function ProjectForm({
                 onChange={(e) => setPhase(e.target.value)}
               >
                 <option value="">Not set</option>
+                {phase && !STAGES.some(s => s === phase) && <option value={phase}>{phase}</option>}
                 {STAGES.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
               <span className="field-help">
-                This describes the whole project’s research stage.
+                This describes the whole project’s stage.
               </span>
             </label>
           )}

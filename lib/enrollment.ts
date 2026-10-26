@@ -40,6 +40,7 @@ export async function enrollGoogleAccount(
   storage: {
     read: () => Promise<Store>;
     add: (person: Person) => Promise<unknown>;
+    recordLogin?: (personId: string) => Promise<unknown>;
   },
 ) {
   const login = verifiedGoogleLogin(provider, profile);
@@ -47,5 +48,6 @@ export async function enrollGoogleAccount(
   const store = await storage.read();
   const person = googleMember(login, store, admins);
   if (!store.people.some((p) => p.id === person.id)) await storage.add(person);
+  await storage.recordLogin?.(person.id);
   return true;
 }

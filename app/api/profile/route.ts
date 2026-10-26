@@ -12,6 +12,7 @@ export async function PATCH(request: Request) {
     await savePerson({
       ...store.people.find((p) => p.id === identity.personId)!,
       name: input.name,
+      setupComplete: "true",
       reminders: String(input.reminders),
       ...(input.academicRole !== undefined
         ? { academicRole: input.academicRole }

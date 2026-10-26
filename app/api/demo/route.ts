@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isDemo, adminEmails } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/access";
 import { apiError } from "@/lib/api";
-import { addPerson, readStore } from "@/lib/store";
+import { addPerson, readStore, recordLogin } from "@/lib/store";
 import { googleMember } from "@/lib/enrollment";
 export async function POST(request: Request) {
   if (!isDemo())
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
         adminEmails(),
       );
       await addPerson(person);
+      await recordLogin(person.id);
       cookie = `person:${person.id}`;
     }
     const response = NextResponse.redirect(

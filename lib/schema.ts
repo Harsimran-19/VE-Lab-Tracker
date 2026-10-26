@@ -59,6 +59,18 @@ export const attributeRecordSchema = z
 export const reportWorkstreamsSchema = z
   .array(z.object({ id: z.uuid(), name: text(150).min(1) }).strict())
   .max(50);
+export const formRequestRecordSchema = z.object({
+  id: z.uuid(), personId: id, kind: z.enum(["initiation", "task"]),
+  message: text(1000), requestedBy: id, createdAt: z.iso.datetime(),
+  completedAt: z.union([z.literal(""), z.iso.datetime()]),
+}).strict();
+export const invitationSchema = z.object({
+  id: z.uuid(), email: text(300).toLowerCase().pipe(z.email()), projectId: text(100),
+}).strict();
+export const formRequestSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("request"), projectId: id, id: z.uuid(), personIds: z.array(id).min(1).max(100), kind: z.enum(["initiation", "task"]), message: text(1000) }).strict(),
+  z.object({ action: z.literal("complete"), projectId: id, id: z.uuid() }).strict(),
+]);
 const projectSetupFields = {
   name: text(150).min(1, "Enter a project name."),
   goal: text(1000).min(1, "Describe the project’s goal."),
@@ -81,7 +93,7 @@ const milestoneMessage = {
   path: ["milestone"],
 };
 export const newProjectSchema = z
-  .object({ id: z.uuid(), ...projectSetupFields, type: z.enum(PROJECT_TYPES).optional() })
+  .object({ id: z.uuid(), ...projectSetupFields, type: z.enum(PROJECT_TYPES).optional(), memberIds: z.array(id).max(100).optional(), supervisorIds: z.array(id).max(100).optional() })
   .partial({
     phase: true,
     leadId: true,
@@ -110,7 +122,7 @@ export const projectChangeSchema = z.discriminatedUnion("action", [
       goal: text(1000).min(1),
     })
     .strict(),
-  z.object({ id, action: z.literal("phase"), phase: projectSetupFields.phase }).strict(),
+  z.object({ id, action: z.literal("phase"), phase: text(150) }).strict(),
   z
     .object({
       id,

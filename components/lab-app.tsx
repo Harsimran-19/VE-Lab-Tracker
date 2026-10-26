@@ -160,7 +160,7 @@ export function LabApp({
       </article>
     );
   }
-  if (data.needsOnboarding) return <Welcome data={data} saved={refresh} />;
+  if (data.needsOnboarding && screen !== "account") return <Welcome data={data} saved={refresh} />;
   const heading =
     screen === "dashboard"
       ? manager
@@ -321,7 +321,7 @@ export function LabApp({
             </>
           )}
           {screen === "project" && chosen && <ProjectWorkspace project={chosen} data={data} busy={busy} edit={(action) => setEditing({ project: chosen, action })} saved={refresh} reportCard={reportCard} clearMilestone={async () => {await action(async () => {await mutate("/api/projects", {id:chosen.id,action:"clear-milestone",expectedVersion:chosen.version ?? 0}, "PATCH");await refresh();setNotice("Milestone removed.");});}} />}
-          {screen === "team" && <TeamDirectory data={data} />}
+          {screen === "team" && <TeamDirectory data={data} saved={refresh} />}
           {screen === "member" && person && (
             <div className="member-workspace">
               <MemberContact person={person} own={person.id === data.identity.personId} />

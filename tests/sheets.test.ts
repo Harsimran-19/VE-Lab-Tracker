@@ -47,6 +47,8 @@ function ranges() {
     s.activities,
     [],
     s.versions,
+    s.invitations,
+    s.logins,
   ];
   return {
     valueRanges: Object.entries(TABLES).map(([name, headers], i) => ({
@@ -292,6 +294,31 @@ test("upgrading existing lab tabs appends only headers and keeps all original ro
     assert.deepEqual(tabs.get(title)!.slice(1), rows);
   await readSheet();
   assert.equal(writes.length, 4);
+});
+
+test("the current 29-column project schema gains only the form request header", async () => {
+  const data = ranges();
+  const tabs = new Map(Object.entries(TABLES).map(([title], i) => [title, data.valueRanges[i].values]));
+  tabs.get("LabProjects")![0] = [...TABLES.LabProjects.slice(0, 29)];
+  const original = structuredClone(tabs.get("LabProjects")!.slice(1));
+  let writes = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = decodeURIComponent(String(input));
+    if (url.includes("?fields=")) return response(metadata());
+    if (url.includes("values:batchGet")) return response({ valueRanges: Object.keys(TABLES).map(title => ({ values: tabs.get(title) })) });
+    const title = url.match(/'([^']+)'!/)![1];
+    if (init?.method) {
+      assert.equal(init.method, "PUT"); assert.match(url, /'LabProjects'!AD1\?valueInputOption=RAW$/);
+      assert.deepEqual(JSON.parse(String(init.body)).values, [["formRequests"]]);
+      tabs.get(title)![0].push("formRequests"); writes++;
+      return response({});
+    }
+    return response({ values: tabs.get(title) });
+  };
+  const store = await readSheet();
+  assert.equal(writes, 1); assert.deepEqual(store.projects[0].formRequests, []);
+  assert.equal(store.projects[0].phase, "Idea");
+  assert.deepEqual(tabs.get("LabProjects")!.slice(1), original);
 });
 
 test("structured research data round-trips as JSON and malformed data is surfaced", async () => {

@@ -9,6 +9,7 @@ import {
   workstreamRecordSchema,
   reportWorkstreamsSchema,
   attributeRecordSchema,
+  formRequestRecordSchema,
 } from "./schema";
 import type {
   Store,
@@ -21,6 +22,8 @@ import type {
   Folder,
   Activity,
   OutputVersion,
+  Invitation,
+  LoginRecord,
 } from "./types";
 // Fresh schema: legacy tracker tabs are never read, imported, or overwritten.
 export const TABLES = {
@@ -45,7 +48,7 @@ export const TABLES = {
     "workstreams",
     "collaborators",
     "type", "folderId", "version", "updatedAt", "updatedBy", "reporting",
-    "approval", "requestedBy", "reviewNote", "attributes",
+    "approval", "requestedBy", "reviewNote", "attributes", "formRequests",
   ],
   LabMembers: [
     "id",
@@ -99,6 +102,8 @@ export const TABLES = {
   LabRevision: ["id", "version"],
   // Append-only: each data, paper or code version is a new row.
   LabVersions: ["id", "projectId", "outputId", "kind", "name", "url", "notes", "personId", "createdAt"],
+  LabInvitations: ["id", "email", "projectId", "invitedBy", "createdAt", "expiresAt", "acceptedAt", "revokedAt"],
+  LabLogins: ["id", "at"],
 } as const;
 // Read and write past column Z: LabProjects has more than 26 columns.
 const LAST_COLUMN = "AZ";
@@ -109,9 +114,9 @@ export function columnName(index: number) {
   return name;
 }
 export type Table = keyof typeof TABLES;
-type Entity = Project | Person | Membership | Update | Settings | Reminder | Folder | Activity | OutputVersion | { id: string; version: number };
+type Entity = Project | Person | Membership | Update | Settings | Reminder | Folder | Activity | OutputVersion | Invitation | LoginRecord | { id: string; version: number };
 const legacyLengths: Partial<Record<Table, number[]>> = {
-  LabProjects: [7, 19, 25],
+  LabProjects: [7, 19, 25, 29],
   LabMembers: [5, 7],
   LabReports: [10, 11, 12],
   LabMemberships: [4],
@@ -271,6 +276,7 @@ export async function readSheet(): Promise<Store> {
           z.array(attributeRecordSchema).max(30),
           "project attributes",
         ),
+        formRequests: decodeList(project.formRequests as unknown as string, z.array(formRequestRecordSchema).max(100), "form requests"),
       }),
     ),
     people: people.map((person) => ({
@@ -305,6 +311,8 @@ export async function readSheet(): Promise<Store> {
     activities: toObjects<Activity>(rows[7], TABLES.LabActivity).map(a => ({...a, changes: decodeList(a.changes as unknown as string, z.array(z.object({label: z.string(), before: z.string(), after: z.string()}).strict()), "activity")})),
     revision: numericVersion(toObjects<{id: string; version: number}>(rows[8], TABLES.LabRevision).find(r => r.id === "lab")?.version),
     versions: toObjects<OutputVersion>(rows[9], TABLES.LabVersions),
+    invitations: toObjects<Invitation>(rows[10], TABLES.LabInvitations),
+    logins: toObjects<LoginRecord>(rows[11], TABLES.LabLogins),
   };
 }
 export async function ensureTables(checkHeaders = false) {

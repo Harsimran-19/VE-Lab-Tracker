@@ -41,6 +41,7 @@ function domainRows(before: Store, next: Store) {
     LabMemberships: next.memberships.map(m => cells("LabMemberships", m)),
     LabReports: next.updates.map(u => cells("LabReports", u)),
     LabFolders: next.folders.map(f => cells("LabFolders", f)),
+    LabInvitations: next.invitations.map(i => cells("LabInvitations", i)),
     LabActivity: next.activities.slice(before.activities.length).map(a => cells("LabActivity", a)),
   };
 }

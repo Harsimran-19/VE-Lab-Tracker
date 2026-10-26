@@ -38,7 +38,7 @@ test("project creation saves its initial direction, lead and deadline together",
     id: "55555555-5555-4555-8555-555555555555",
     name: "New study",
     goal: "Understand collaboration",
-    phase: "Data collection",
+    phase: "Design",
     leadId: member.personId,
     priority: "Push",
     methods: "Interviews",
@@ -82,7 +82,7 @@ test("older creation requests retain safe defaults; consolidated settings preser
     name: "Study",
     goal: "Learn",
   });
-  assert.equal(created.phase, "Idea");
+  assert.equal(created.phase, "Ideation");
   assert.equal(created.priority, "Steady");
   assert.equal(created.milestone, "");
   for (const personId of [member.personId,manager.personId]) s.memberships.push({id:`new-${personId}`,projectId:created.id,personId,joinedAt:now.toISOString()});
@@ -98,13 +98,13 @@ test("older creation requests retain safe defaults; consolidated settings preser
   const changed = planProjectChange(s, manager, {
     ...fields,
     action: "settings",
-    phase: "Writing",
+    phase: "Beta prototype",
     leadId: member.personId,
     milestone: "First draft",
     due: "2026-12-01",
     publicationStatus: "In preparation",
   });
-  assert.equal(changed.phase, "Writing");
+  assert.equal(changed.phase, "Beta prototype");
   assert.equal(changed.leadId, member.personId);
   assert.equal(changed.milestone, "First draft");
   assert.equal(changed.state, "on-hold");

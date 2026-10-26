@@ -26,7 +26,7 @@ function doPost(event) {
     var revision = Number(revisionRow[1] || 0);
     if (!Number.isSafeInteger(revision) || revision < 0 || (revisionRow[0] && revisionRow[0] !== 'lab')) return result_({ ok: false });
     if (revision !== input.expectedRevision) return result_({ ok: false, conflict: true });
-    var tables = ['LabProjects','LabMemberships','LabReports','LabFolders','LabActivity'];
+    var tables = ['LabProjects','LabMemberships','LabReports','LabFolders','LabActivity','LabInvitations'];
     if (Object.keys(input.data).sort().join(',') !== tables.slice().sort().join(',')) return result_({ ok: false });
     var requests = [];
     tables.forEach(function(title) {

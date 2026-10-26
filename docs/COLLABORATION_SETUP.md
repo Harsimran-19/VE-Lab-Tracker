@@ -1,11 +1,14 @@
 # Collaborative project storage
 
-Google Sheets remains the sole database. A shared, locked Apps Script writer is
-required for production project changes: the Sheets API has no conditional row
-update or transaction combining a checked version with dependent writes. A
-process-local mutex would not protect separate Vercel instances.
+Google Sheets remains the sole database. The app saves directly through the
+Sheets API when no Apps Script writer is configured. You can leave Apps Script
+empty and deploy this update without manually editing sheet tabs or columns.
 
-## Required production writer setup
+The optional shared, locked writer serializes saves across Vercel instances.
+Direct Sheets saves use atomic batches and revision checks, but simultaneous
+saves across instances can still race. The writer adds cross-instance locking.
+
+## Optional writer setup
 
 1. Back up the configured spreadsheet. Stop all old application writers and cron
    runs during cutover; do not run old and new app versions concurrently.
@@ -18,8 +21,8 @@ process-local mutex would not protect separate Vercel instances.
    to anyone. The endpoint authenticates the signed request body with HMAC-SHA256,
    checks its spreadsheet binding and a 60-second expiry, and never accepts
    unsigned requests. If your Workspace policy forbids this deployment mode,
-   collaborative production writes are blocked; use an approved trusted gateway
-   with the same locking and atomic-batch contract before rollout.
+   continue with direct Sheets saves or use an approved trusted gateway with
+   the same locking and atomic-batch contract when that protection is needed.
 4. Set private app variables `SHEETS_TRANSACTION_URL` to the script `/exec` URL
    and `SHEETS_TRANSACTION_KEY` to the same secret. All app instances must point
    to **one script deployment**, never separate copies. Restrict spreadsheet
@@ -30,6 +33,27 @@ process-local mutex would not protect separate Vercel instances.
    by the app's service account in one atomic Sheets batch after a revision
    check. That keeps the lab usable, but cannot serialize two saves landing at
    the same moment on separate server instances; configure the writer for that.
+
+## Updating an existing writer for invitations
+
+Skip this section if Apps Script is empty or no writer is configured. There is
+no existing writer to update, and the app handles the sheet additions itself.
+
+This release adds `LabInvitations` to the signed project transaction and a
+`formRequests` JSON column to `LabProjects`. Before deploying the app, replace
+and redeploy the existing Apps Script web app with the current
+`sheets-transaction-writer.gs`, keeping the same deployment URL and secret.
+The previous script rejects the added table, so deploying only the app would
+block saves when that script is configured. Release the app during the same
+cutover; old app versions also cannot write through the updated script.
+
+`LabInvitations` and `LabLogins` are created automatically, and existing
+29-column `LabProjects` tabs receive the additional header without replacing
+rows. Login records use a separate write path so profile changes cannot erase
+the last sign-in. Only the admin workspace includes login data. Invitation
+creation and acceptance use the shared project transaction, including lab-only
+invitations that have no project activity entry. No deployment credentials or
+live lab data are needed for the local automated checks.
 
 ## Additive migration and rollback
 
@@ -48,7 +72,7 @@ migration. Existing membership join dates and report authors/timestamps survive.
 The authenticated Node backend validates current membership, input, and integer
 record versions. The writer serializes all project-domain writes across instances,
 compares a monotonically increasing lab revision, then commits the project rows,
-team, reports, folders, new activity entries, and revision in one atomic Sheets
+team, reports, folders, invitations, new activity entries, and revision in one atomic Sheets
 `batchUpdate`. A concurrent team change invalidates the authorization snapshot.
 Reads bracket their snapshot with revision reads. Failed/conflicting saves create
 no activity. A timeout is explicitly an unconfirmed save: refresh before retrying.
@@ -118,7 +142,7 @@ exact callback URL.
    their edit form is open, then try saving from that form: the save must fail.
    Existing self-joining remains available, so do not rejoin during this check.
 3. **Types and folders:** Create a Startup or Lab Management test project and
-   verify that its research phase starts unset. In **Projects → Folders**, create
+   verify that its project phase starts at Ideation. In **Projects → Folders**, create
    a test folder. Open the project and use **Change type or folder** to assign it.
    Combine the type and folder filters with search. Move the project to another
    folder, then remove that folder using its confirmation dialog. The project

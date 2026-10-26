@@ -5,7 +5,8 @@ import { JWT } from "google-auth-library";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import { cells, TABLES } from "../lib/sheets";
-import { fixture, member, now } from "./fixture";
+import { fixture, manager, member, now } from "./fixture";
+import { acceptInvitation, planFormRequest, planInvitation } from "../lib/invitations";
 import { upgradeStore, recordChanges } from "../lib/collaboration";
 import { commitSheetTransaction } from "../lib/sheet-transactions";
 const key="test-writer-secret-with-at-least-32-characters";
@@ -46,6 +47,26 @@ test("the locked writer atomically persists the changed record, new audit and re
   const w=writer();configure(w);const {before,next}=states();await commitSheetTransaction(before,next);
   assert.equal(w.tables.get("LabProjects")![1][1],"Audited change");assert.equal(w.tables.get("LabActivity")![1][4],member.personId);assert.equal(w.tables.get("LabRevision")![1][1],"1");assert.equal(w.commits(),1);
   await assert.rejects(commitSheetTransaction(before,next),/while saving/);assert.equal(w.commits(),1);assert.equal(w.tables.get("LabActivity")!.length,2);
+});
+test("the locked writer stores invitations, accepted memberships and form requests together", async () => {
+  const w = writer(); configure(w);
+  const before = upgradeStore(fixture()), invited = structuredClone(before);
+  const invitationId = "55555555-5555-4555-8555-555555555555";
+  planInvitation(invited, manager, { id: invitationId, email: manager.email, projectId: invited.projects[0].id }, now);
+  invited.revision = 1;
+  await commitSheetTransaction(before, invited);
+  assert.equal(w.tables.get("LabInvitations")![1][1], manager.email);
+  const accepted = structuredClone(invited);
+  acceptInvitation(accepted, manager, invitationId, now);
+  planFormRequest(accepted, manager, { action: "request", id: "66666666-6666-4666-8666-666666666666", projectId: accepted.projects[0].id, personIds: [member.personId], kind: "initiation", message: "Complete the goal" }, now);
+  recordChanges(invited, accepted, manager, "Forms", "Requested initiation form", now);
+  accepted.revision = 2;
+  await commitSheetTransaction(invited, accepted);
+  assert.equal(w.tables.get("LabInvitations")![1][6], now.toISOString());
+  assert.ok(w.tables.get("LabMemberships")!.some(row => row[2] === manager.personId));
+  const requests = JSON.parse(w.tables.get("LabProjects")![1].at(-1)!);
+  assert.equal(requests[0].personId, member.personId); assert.equal(requests[0].message, "Complete the goal");
+  assert.equal(w.tables.get("LabRevision")![1][1], "2");
 });
 test("an audit/batch write failure leaves no changed project, revision or successful activity",async()=>{
   const w=writer();configure(w);w.setFailure(true);const {before,next}=states();await assert.rejects(commitSheetTransaction(before,next),/could not confirm/);

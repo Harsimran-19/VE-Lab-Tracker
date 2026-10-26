@@ -402,7 +402,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function ContextEditor({
+export function ContextEditor({
   project,
   data,
   editor,
@@ -432,7 +432,7 @@ function ContextEditor({
   const [stream, setStream] = useState<Workstream>({
     id: recordId,
     name: "",
-    ownerId: "",
+    ownerId: data.identity.personId,
     status: "Not started",
     due: "",
     notes: "",
@@ -576,7 +576,7 @@ function ContextEditor({
                   </label>
                 </div>
                 <label>
-                  Research methods
+                  Methods
                   <textarea
                     rows={2}
                     maxLength={2000}
@@ -671,7 +671,7 @@ function ContextEditor({
             {editor.kind === "publication" && (
               <>
                 <p className="field-help">
-                  Separate from the research phase. Leave this blank for
+                  Separate from the project phase. Leave this blank for
                   projects without a publication plan.
                 </p>
                 <label>

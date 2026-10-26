@@ -3,9 +3,8 @@ import { authorizedContext } from "@/lib/auth";
 import { requireSameOrigin } from "@/lib/access";
 import { apiError, readJson } from "@/lib/api";
 import { mutateProjectDomain } from "@/lib/store";
-import { planProjectChange, planProjectCreation } from "@/lib/project-details";
+import { addInitialProjectTeam, planProjectChange, planProjectCreation } from "@/lib/project-details";
 import { checkVersion, versionedInput } from "@/lib/collaboration";
-import { membershipId } from "@/lib/membership";
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
@@ -15,9 +14,7 @@ export async function POST(request: Request) {
       const created = planProjectCreation(store, current, input);
       if (store.projects.some(p => p.id === created.id)) return created;
       store.projects.push(created);
-      for (const personId of new Set([current.personId, created.leadId!])) {
-        store.memberships.push({ id: membershipId(personId, created.id), personId, projectId: created.id, joinedAt: new Date().toISOString(), contributor: true, supervisor: false });
-      }
+      addInitialProjectTeam(store, current, created, input);
       return created;
     });
     return NextResponse.json({ project }, { status: 201 });

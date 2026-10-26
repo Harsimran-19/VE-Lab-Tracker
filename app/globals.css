@@ -3341,3 +3341,26 @@ fieldset {
   .environment-banner { padding: 8px 16px; }
 }
 .hours-summary th { white-space: nowrap; }
+/* Project initiation, member invitations and manager overview. */
+.people-picker { border: 1px solid var(--border, #ddd); padding: 14px; border-radius: 10px; min-width: 0; }
+.people-picker legend { padding: 0 5px; font-weight: 500; }
+.people-picker-options { max-height: 190px; overflow-y: auto; margin-top: 10px; display: grid; gap: 8px; }
+.people-picker-options small { display: block; font-size: 12px; color: var(--muted, #666); overflow-wrap: anywhere; }
+.collaboration-section { margin: 22px 0; padding: 22px 0; border-bottom: 1px solid var(--border, #ddd); }
+.request-list { list-style: none; margin: 14px 0; padding: 0; }
+.request-list li { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--border, #ddd); }
+.request-list p { margin: 5px 0; }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+.dashboard-metrics div { border: 1px solid var(--border, #ddd); border-radius: 10px; padding: 18px; }
+.dashboard-metrics dt { color: var(--muted, #666); font-size: 14px; }
+.dashboard-metrics dd { font-size: 30px; margin: 8px 0 0; }
+.admin-dashboard h3 { margin-top: 28px; }
+.admin-dashboard caption { text-align: left; padding-bottom: 12px; font-weight: 500; }
+.admin-dashboard .directory-table th:last-child, .admin-dashboard .directory-table td:last-child { width: auto; }
+@media (max-width: 700px) {
+  .dashboard-metrics { grid-template-columns: repeat(2, 1fr); }
+  .request-list li { align-items: flex-start; flex-direction: column; }
+  .admin-dashboard .directory-table tr { grid-template-columns: minmax(0, 1fr); }
+  .admin-dashboard .directory-table td:last-child { grid-column: 1; grid-row: auto; padding: 4px 0; }
+  .admin-dashboard .directory-table td:last-child::before { content: attr(data-label) ": "; color: #616168; font-size: 12px; }
+}

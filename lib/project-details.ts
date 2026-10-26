@@ -1,6 +1,7 @@
 import { AppError, requireAdmin, requireProjectAccess } from "./access";
 import type { ProjectAttribute } from "./types";
 import { STAGES } from "./types";
+import { membershipId } from "./membership";
 import type { Identity, Project, Store } from "./types";
 import {
   newProjectSchema,
@@ -17,12 +18,15 @@ export function planProjectCreation(
   if (!store.people.some(p => p.id === identity.personId && p.email.toLowerCase() === identity.email.toLowerCase()))
     throw new AppError("This account is outside the lab.", 403);
   const input = newProjectSchema.parse(raw);
+  const { memberIds = [], supervisorIds = [], ...details } = input;
+  for (const personId of [...memberIds, ...supervisorIds])
+    if (!store.people.some(p => p.id === personId)) throw new AppError("Choose project members and supervisors from the lab.");
   if (input.leadId && !store.people.some((p) => p.id === input.leadId))
     throw new AppError("Choose a lead from the lab.");
   const existing = store.projects.find((p) => p.id === input.id);
   if (existing) {
     if (
-      Object.entries(input).some(
+      Object.entries(details).some(
         ([key, value]) => existing[key as keyof Project] !== value,
       )
     )
@@ -42,9 +46,9 @@ export function planProjectCreation(
     targetJournal: "",
     altJournal: "",
     targetConference: "",
-    ...input,
+    ...details,
     type: input.type ?? "Research",
-    phase: input.phase ?? (input.type && input.type !== "Research" ? "" : "Idea"),
+    phase: input.phase ?? "Ideation",
     leadId: input.leadId || identity.personId,
     state: "active",
     approval: identity.role === "admin" ? "approved" : "pending",
@@ -52,6 +56,15 @@ export function planProjectCreation(
     reviewNote: "",
     attributes: [],
   };
+}
+
+export function addInitialProjectTeam(store: Store, identity: Identity, project: Project, raw: unknown, now = new Date()) {
+  const { memberIds = [], supervisorIds = [] } = newProjectSchema.parse(raw);
+  const contributors = new Set([identity.personId, project.leadId!, ...memberIds]);
+  for (const personId of new Set([...contributors, ...supervisorIds])) {
+    if (store.memberships.some(m => m.projectId === project.id && m.personId === personId)) continue;
+    store.memberships.push({ id: membershipId(personId, project.id), personId, projectId: project.id, joinedAt: now.toISOString(), contributor: contributors.has(personId), supervisor: supervisorIds.includes(personId) });
+  }
 }
 
 export function planProjectChange(
@@ -70,7 +83,7 @@ export function planProjectChange(
   const project = { ...existing };
   switch (input.action) {
     case "settings": {
-      if (input.phase && input.phase !== existing.phase && !STAGES.some(s => s === input.phase)) throw new AppError("Choose a supported research phase.");
+      if (input.phase && input.phase !== existing.phase && !STAGES.some(s => s === input.phase)) throw new AppError("Choose a supported project phase.");
       if (input.leadId && input.leadId !== existing.leadId && !store.people.some((p) => p.id === input.leadId))
         throw new AppError("Choose a lead from the lab.");
       const { id: _id, action: _action, ...settings } = input;
@@ -82,6 +95,7 @@ export function planProjectChange(
       project.goal = input.goal;
       break;
     case "phase":
+      if (input.phase && input.phase !== existing.phase && !STAGES.some(s => s === input.phase)) throw new AppError("Choose a supported project phase.");
       project.phase = input.phase;
       break;
     case "milestone":

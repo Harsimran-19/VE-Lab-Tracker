@@ -29,7 +29,7 @@ test("members propose projects that wait for the manager's approval before repor
   const project = s.projects.find(p => p.id === PROJECT)!;
   assert.equal(project.approval, "pending");
   assert.equal(project.type, "Fund Sourcing");
-  assert.equal(project.phase, "");
+  assert.equal(project.phase, "Ideation");
   assert.equal(project.requestedBy, member.personId);
   assert.equal(isLive(project), false);
   assert.throws(() => planEntry(s, member, report, now), /once this project is approved/);
@@ -170,7 +170,7 @@ test("upgrading a 25-column project tab widens the grid before adding headers pa
     return ok({ values: tabs.get(title) });
   };
   const store = await readSheet();
-  assert.deepEqual(log, ["widen LabProjects to 29", "headers LabProjects from Z", "headers LabMembers from H", "headers LabReports from M"]);
+  assert.deepEqual(log, ["widen LabProjects to 30", "headers LabProjects from Z", "headers LabMembers from H", "headers LabReports from M"]);
   assert.deepEqual(store.versions, []);
   assert.deepEqual(tabs.get("LabProjects")![0], [...TABLES.LabProjects]);
 });

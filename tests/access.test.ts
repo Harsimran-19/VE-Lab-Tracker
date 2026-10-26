@@ -99,7 +99,7 @@ test("forms accept only the fields needed for their action", () => {
     projectChangeSchema.safeParse({
       id: input.id,
       action: "phase",
-      phase: "Writing",
+      phase: "Design",
     }).success,
     true,
   );

@@ -104,7 +104,7 @@ test("legacy migration backfills only a recorded valid lead and leaves unknown t
   const raw=fixture();raw.projects[0].leadId=manager.personId;
   const s=upgradeStore(raw);assert.equal(s.projects[0].type,"");assert.equal(s.projects[0].phase,raw.projects[0].phase);assert.equal(s.memberships.find(m=>m.personId===manager.personId)?.joinedAt,"");assert.deepEqual(s.activities,[]);assert.deepEqual(s.projects[0].reporting,[]);
   raw.projects[0].leadId="unknown";assert.equal(upgradeStore(raw).memberships.length,1);
-  assert.equal(planProjectCreation(s,manager,{id:"55555555-5555-4555-8555-555555555555",name:"Tool",goal:"Manage equipment",type:"Lab Management"}).phase,"");
+  assert.equal(planProjectCreation(s,manager,{id:"55555555-5555-4555-8555-555555555555",name:"Tool",goal:"Manage equipment",type:"Lab Management"}).phase,"Ideation");
 });
 test("report edits retain their own integer versions and reject stale progress without altering data",()=>{
   const s=teamStore(),input={projectId:s.projects[0].id,weekStart:"2026-10-05",progress:"First",nextPlan:"Next",needsHelp:false,blockers:""};

@@ -45,7 +45,7 @@ export async function mutateProjectDomain<T>(identity: Identity, area: string, a
     if (old && before.projects.filter(p=>p.folderId===folder.id).map(p=>p.id).sort().join(",") !== next.projects.filter(p=>p.folderId===folder.id).map(p=>p.id).sort().join(",")) folder.version = Math.max(folder.version,old.version + 1);
   }
   recordChanges(before, next, current, area, action);
-  if (next.activities.length === before.activities.length && JSON.stringify(before.folders) === JSON.stringify(next.folders)) return result;
+  if (next.activities.length === before.activities.length && JSON.stringify(before.folders) === JSON.stringify(next.folders) && JSON.stringify(before.invitations) === JSON.stringify(next.invitations)) return result;
   next.revision = before.revision + 1;
   if (isDemo()) globals.veLabFreshDemo = next;
   else await commitSheetTransaction(before, next);
@@ -62,6 +62,11 @@ export async function savePerson(person: Person) {
   return upsertSheet("LabMembers", person);
 }
 export const addPerson = savePerson;
+export async function recordLogin(personId: string, now = new Date()) {
+  const record = { id: personId, at: now.toISOString() };
+  if (isDemo()) { demoStore().logins = upsert(demoStore().logins, record); return; }
+  return upsertSheet("LabLogins", record);
+}
 export async function saveSettings(settings: Settings) {
   if (isDemo()) {
     demoStore().settings = settings;

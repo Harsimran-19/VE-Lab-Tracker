@@ -1,11 +1,11 @@
 export const STAGES = [
-  "Idea",
-  "Literature review",
-  "Data collection",
-  "Data analysis",
-  "Findings",
-  "Writing",
-  "Submission",
+  "Ideation",
+  "Design",
+  "Alpha prototype",
+  "Alpha prototype testing",
+  "Beta prototype",
+  "Beta prototype testing",
+  "In use",
 ] as const;
 export const PUBLICATION_STATUSES = [
   "Not submitted",
@@ -91,6 +91,30 @@ export interface Project {
   requestedBy?: string;
   reviewNote?: string;
   attributes?: ProjectAttribute[];
+  formRequests?: FormRequest[];
+}
+export interface FormRequest {
+  id: string;
+  personId: string;
+  kind: "initiation" | "task";
+  message: string;
+  requestedBy: string;
+  createdAt: string;
+  completedAt: string;
+}
+export interface Invitation {
+  id: string;
+  email: string;
+  projectId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string;
+  revokedAt: string;
+}
+export interface LoginRecord {
+  id: string;
+  at: string;
 }
 export interface Person {
   id: string;
@@ -189,6 +213,8 @@ export interface Store {
   folders: Folder[];
   activities: Activity[];
   versions: OutputVersion[];
+  invitations: Invitation[];
+  logins: LoginRecord[];
   revision: number;
 }
 export interface Identity {
@@ -227,6 +253,8 @@ export function emptyStore(): Store {
     folders: [],
     activities: [],
     versions: [],
+    invitations: [],
+    logins: [],
     revision: 0,
   };
 }

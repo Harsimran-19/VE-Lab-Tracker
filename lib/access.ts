@@ -73,6 +73,8 @@ export function workspaceFor(
   const today = dateInZone(now, store.settings.timezone);
   return {
     ...shared,
+    logins: identity.role === "admin" ? store.logins ?? [] : [],
+    invitations: (store.invitations ?? []).filter(i => identity.role === "admin" || i.email === identity.email || (i.projectId && store.projects.some(p => p.id === i.projectId && canManageProject(store, identity, p)))),
     revision: store.revision,
     activities: store.projects.flatMap(p => activities.filter(a => a.projectId === p.id).slice(-20)),
     identity,

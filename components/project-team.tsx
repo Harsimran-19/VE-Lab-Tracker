@@ -6,6 +6,7 @@ import { canManageProject } from "@/lib/access";
 import { Modal } from "./modal";
 import { mutate } from "./forms";
 import { ConflictReview } from "./conflict-review";
+import { InviteMember, InvitationList } from "./invitations";
 
 export function ProjectTeam({ project, data, saved }: {project: Project; data: Workspace; saved: () => Promise<void>}) {
   const members = data.memberships.filter(m => m.projectId === project.id);
@@ -13,13 +14,14 @@ export function ProjectTeam({ project, data, saved }: {project: Project; data: W
   const [editor, setEditor] = useState<{member?: Membership; reporting?: boolean} | null>(null);
   const research = project.type === "Research";
   return <section>
-    <div className="section-heading"><h2>Project team</h2>{manage && <button className="button secondary small-button" onClick={() => setEditor({})}>Add member</button>}</div>
+    <div className="section-heading"><h2>Project team</h2>{manage && <div className="inline-actions"><button className="button secondary small-button" onClick={() => setEditor({})}>Add member</button><InviteMember data={data} projectId={project.id} saved={saved} /></div>}</div>
     <p className="section-copy">{research ? "Researchers" : "Contributors"} can edit project details and progress. The lead, supervisors and lab manager can manage the team.</p>
     {members.length ? <div className="directory-table-wrap"><table className="directory-table"><thead><tr><th>Member</th><th>Responsibilities</th><th>Reports to</th>{manage && <th>Manage</th>}</tr></thead><tbody>{members.map(m => {
       const person = data.people.find(p => p.id === m.personId);
       const supervisors = (project.reporting ?? []).filter(r => r.researcherId === m.personId).map(r => data.people.find(p => p.id === r.supervisorId)?.name || "Member");
       return <tr key={m.id}><td data-label="Member"><Link className="directory-name" href={`/team/${encodeURIComponent(m.personId)}`} prefetch={false}>{person?.name || "Member"}</Link></td><td data-label="Responsibilities">{[project.leadId === m.personId ? research ? "Lead researcher" : "Project lead" : "", m.contributor !== false ? research ? "Researcher" : "Contributor" : "", m.supervisor ? "Supervisor" : ""].filter(Boolean).join(" · ")}</td><td data-label="Reports to">{m.contributor !== false ? supervisors.join(" · ") || <span className="muted">Supervisor not assigned</span> : "—"}</td>{manage && <td className="project-team-actions" data-label="Manage"><div className="inline-actions"><button className="text-action" aria-label={`Edit ${person?.name || "member"}`} onClick={() => setEditor({member:m})}>Edit member</button>{m.contributor !== false && <button className="text-action" aria-label={`Set supervisors for ${person?.name || "member"}`} onClick={() => setEditor({member:m,reporting:true})}>Set supervisors</button>}</div></td>}</tr>;
     })}</tbody></table></div> : <p className="quiet-empty">No members assigned.</p>}
+    {manage && <InvitationList data={data} projectId={project.id} saved={saved} />}
     {editor && <TeamEditor project={project} data={data} member={editor.member} reporting={editor.reporting} close={() => setEditor(null)} saved={saved} />}
   </section>;
 }

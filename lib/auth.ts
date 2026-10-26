@@ -5,7 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { cookies } from "next/headers";
 import { adminEmails, isDemo } from "./config";
 import { AppError, resolveIdentity } from "./access";
-import { addPerson, readStore } from "./store";
+import { addPerson, readStore, recordLogin } from "./store";
 
 import { enrollGoogleAccount, googleMember } from "./enrollment";
 import type { Identity, Store } from "./types";
@@ -28,7 +28,7 @@ export const authOptions: NextAuthOptions = {
           account?.provider,
           profile,
           adminEmails(),
-          { read: readStore, add: addPerson },
+          { read: readStore, add: addPerson, recordLogin },
         );
       } catch {
         return false;
@@ -78,6 +78,7 @@ export async function authorizedContext(): Promise<{
       admins,
     );
     await addPerson(person);
+    if (isDemo()) await recordLogin(person.id);
     store = await readStore();
   }
   return {

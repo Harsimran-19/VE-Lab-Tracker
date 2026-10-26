@@ -10,6 +10,8 @@ import { membershipJoinedBefore } from "@/lib/calendar";
 import { Modal } from "./modal";
 import { isLive } from "@/lib/access";
 import { ApprovalQueue } from "./project-governance";
+import { AdminDashboard } from "./admin-dashboard";
+import { MyFormRequests } from "./form-requests";
 
 export function HomePage({ data, busy, writeUpdate, createProject, changeStatus }: {
   data: Workspace;
@@ -62,6 +64,8 @@ export function HomePage({ data, busy, writeUpdate, createProject, changeStatus 
       </section>
 
       <ApprovalQueue data={data} />
+      <MyFormRequests data={data} />
+      <AdminDashboard data={data} />
 
       <section className="home-section" aria-labelledby="home-projects-heading">
         <div className="home-section-heading">
